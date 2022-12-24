@@ -3,3 +3,6 @@ blacksheep
 orjson
 
 httpx
+uvloop
+asgiref
+aiofiles
