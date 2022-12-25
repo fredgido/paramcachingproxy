@@ -1,17 +1,21 @@
 import asyncio
 import pathlib
-from typing import Optional
+import re
+import time
+import urllib.parse
+import uuid
+from dataclasses import dataclass
+from typing import Optional, Callable, Awaitable, Union
 
 import aiofiles
+import aiofiles.os
 import httpx
 import uvicorn
-import re
-import urllib.parse
-
 from asgiref.typing import HTTPScope
 
-client = httpx.AsyncClient()
+CoroutineFunction = Callable[[Union[dict, type(None)]], Awaitable]
 
+client = httpx.AsyncClient()
 
 twitter_media_path = pathlib.Path("twitter_media")
 twitter_media_path.mkdir(exist_ok=True)
@@ -38,44 +42,72 @@ ext_content_type = {
 
 CHUNK_SIZE = int(65536)
 
+ReceiveType = Callable[[], Awaitable]
+SendType = Callable[[dict], Awaitable]
+
+
+@dataclass
+class Connection:
+    scope: HTTPScope
+    receive: ReceiveType
+    send: SendType
+    log_info: dict
+
 
 class App:
-    async def __call__(self, scope: HTTPScope, receive, send):
+    async def __call__(self, scope: HTTPScope, receive: ReceiveType, send: SendType):
         assert scope["type"] == "http"
 
-        r = await receive()  # this is nothing
+        # r = await receive()  # this is nothing
 
-        if scope["path"] != "/twitter_proxy":
-            print(scope["path"], "failed")
-            return await self.return_error(send, b"Invalid Path")
+        connection = Connection(scope, receive, send, dict())
 
-        query = urllib.parse.parse_qs(scope["query_string"])
+        if scope["path"] == "/twitter_proxy":
+            return await self.twitter_proxy_handler(connection)
+        print(scope["path"], "failed")
+        return await self.return_error(connection, b"Invalid URL Path")
 
-        url: Optional[list[bytes]] = query.get(b"url")
-        if not url:
+    async def twitter_proxy_handler(self, connection: Connection):
+        connection.log_info["chunks_size"] = 0
+        connection.log_info["chunks_times"] = []
+        connection.log_info["start_time"] = time.perf_counter()
+        query = urllib.parse.parse_qs(connection.scope["query_string"])
+
+        url_params: Optional[list[bytes]] = query.get(b"url")
+        if not url_params:
             print(query, "failed")
-            return await self.return_error(send, b"Missing query param")
+            return await self.return_error(connection, b"Missing query param")
 
-        url_type, name, extension = twitter_url_to_orig(url[0].decode())
+        url = url_params[0].decode()
+        connection.log_info["url"] = url
+        url_type, name, extension = twitter_url_to_orig(url)
+        connection.log_info["url_type"] = url_type
+        connection.log_info["name"] = name
+        connection.log_info["extension"] = extension
 
         if not name:
             print(query, "failed")
-            return await self.return_error(send, b"Not Found")
+            return await self.return_error(connection, b"Not Found")
 
         file_name = f"{name}.{extension}"
         file_path = twitter_media_path / file_name
         if file_path.exists():
-            await self.send_file(extension, file_path, send)
+            connection.log_info["file_exists"] = True
+            await self.send_file(connection, extension, file_path)
+            connection.log_info["end_time"] = time.perf_counter() - connection.log_info["start_time"]
+            print(connection.log_info)
             return
 
         download_url = f"https://pbs.twimg.com/{url_type}/{name}?format={extension}&name=orig"
         print(download_url)
-        await self.download_file_write_file_send_file(download_url, file_path, send)
+        await self.download_file_write_file_send_file(connection, download_url, file_path)
+        connection.log_info["file_exists"] = False
+        connection.log_info["end_time"] = time.perf_counter() - connection.log_info["start_time"]
+        print(connection.log_info)
         return
 
-    @staticmethod
-    async def send_file(extension, file_path, send):
-        header_send_future = send(
+    async def send_file(self, connection: Connection, extension: str, file_path: str | pathlib.Path):
+        header_send_future = connection.send(
             {
                 "type": "http.response.start",
                 "status": 200,
@@ -90,11 +122,13 @@ class App:
         async with aiofiles.open(file_path, "rb") as aio_file:
             first_chunk_future = aio_file.read(CHUNK_SIZE)
             chunk, header_send_result = await asyncio.gather(first_chunk_future, header_send_future)
+            connection.log_info["header_first_chunk_time"] = time.perf_counter() - connection.log_info["start_time"]
+            connection.log_info["chunks_size"] += len(chunk)
             while True:
                 if not chunk:
                     break
                 chunk_future = aio_file.read(CHUNK_SIZE)
-                send_future = send(
+                send_future = connection.send(
                     {
                         "type": "http.response.body",
                         "body": chunk,
@@ -102,13 +136,17 @@ class App:
                     }
                 )
                 chunk, send_result = await asyncio.gather(chunk_future, send_future)
+                connection.log_info["chunks_times"].append(time.perf_counter() - connection.log_info["start_time"])
+                connection.log_info["chunks_size"] += len(chunk)
                 if not chunk:
                     break
-        await send({"type": "http.response.body", "body": b""})
+
+        connection.log_info["end_packet_time"] = time.perf_counter() - connection.log_info["start_time"]
+        await connection.send({"type": "http.response.body", "body": b""})
 
     @staticmethod
-    async def return_error(send, error_message: bytes):
-        await send(
+    async def return_error(connection, error_message: bytes):
+        await connection.send(
             {
                 "type": "http.response.start",
                 "status": 200,
@@ -117,7 +155,7 @@ class App:
                 ],
             }
         )
-        await send(
+        await connection.send(
             {
                 "type": "http.response.body",
                 "body": error_message,
@@ -125,19 +163,23 @@ class App:
         )
         return
 
-    @staticmethod
-    async def download_file_write_file_send_file(download_url, file_path, send):
-        async with aiofiles.open(file_path, "wb") as aio_file:
+    async def download_file_write_file_send_file(
+        self, connection: Connection, download_url: str, file_path: str | pathlib.Path
+    ):
+        file_path_placeholder = str(file_path) + str(uuid.uuid4())
+        connection.log_info["download_start_time"] = time.perf_counter() - connection.log_info["start_time"]
+        async with aiofiles.open(file_path_placeholder, "wb") as aio_file:
             async with client.stream("GET", download_url) as response:
+                connection.log_info["response_time"] = time.perf_counter() - connection.log_info["start_time"]
                 response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE)
 
-                async def wrap_read_response_stop_iter(future):
+                async def wrap_read_response_stop_iter(future) -> Optional[bytes]:
                     try:
                         return await future
                     except StopAsyncIteration:
                         return None
 
-                header_send_future = send(
+                header_send_future = connection.send(
                     {
                         "type": "http.response.start",
                         "status": 200,
@@ -155,10 +197,12 @@ class App:
                     response_future,
                     header_send_future,
                 )
+                connection.log_info["header_first_chunk_time"] = time.perf_counter() - connection.log_info["start_time"]
+                connection.log_info["chunks_size"] += len(read_chunk)
                 while True:
                     if not read_chunk:
                         break
-                    send_future = send(
+                    send_future = connection.send(
                         {
                             "type": "http.response.body",
                             "body": read_chunk,
@@ -173,11 +217,16 @@ class App:
                         send_future,
                         file_write_future,
                     )
+                    connection.log_info["chunks_times"].append(time.perf_counter() - connection.log_info["start_time"])
+                    if read_chunk:
+                        connection.log_info["chunks_size"] += len(read_chunk)
                     if not read_chunk:
                         break
 
-                await send({"type": "http.response.body", "body": b""})
+        await connection.send({"type": "http.response.body", "body": b""})
+        await aiofiles.os.rename(file_path_placeholder, file_path)
+        connection.log_info["rename_time"] = time.perf_counter() - connection.log_info["start_time"]
 
 
 if __name__ == "__main__":
-    uvicorn.run(App, port=5000, log_level="info", loop="uvloop",timeout_keep_alive=70,use_colors=True)
+    uvicorn.run(App, port=5000, log_level="info", loop="uvloop", timeout_keep_alive=70, use_colors=True)
