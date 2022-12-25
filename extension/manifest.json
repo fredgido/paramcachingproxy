@@ -1,0 +1,26 @@
+{
+  "manifest_version": 2,
+  "name": "Parameter Proxy Extension",
+  "description": "",
+  "version": "0.0.0.1",
+  "action": {
+    "default_popup": "description.html",
+    "default_icon": "icon.png"
+  },
+  "permissions": [
+    "activeTab",
+    "webRequest",
+    "webRequestBlocking",
+    "*://pbs.twimg.com/media/",
+    "*://twitter.com/",
+    "*://mobile.twitter.com/",
+    "contextMenus",
+    "storage"
+  ],
+  "background": {
+    "scripts": [
+      "script.js"
+    ],
+    "persistent": true
+  }
+}

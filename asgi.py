@@ -10,14 +10,11 @@ import urllib.parse
 
 from asgiref.typing import HTTPScope
 
+client = httpx.AsyncClient()
+
+
 twitter_media_path = pathlib.Path("twitter_media")
 twitter_media_path.mkdir(exist_ok=True)
-
-image_name_url_regex_str = r"\/media\/(?P<name>[a-zA-Z\d]*)\.(?P<extension>[a-z]*)"
-
-image_name_url_regex = re.compile(image_name_url_regex_str)
-
-client = httpx.AsyncClient()
 
 twitter_url_regex_str = r"\.twimg\.com\/(?P<type>tweet_video_thumb|media)/(?P<name>[a-zA-Z\d_-]*)(?:\?format=|.)(?P<extension>[a-zA-Z]{3,4})"
 twitter_url_regex = re.compile(twitter_url_regex_str)
@@ -152,9 +149,10 @@ class App:
                         ],
                     }
                 )
+                response_future = wrap_read_response_stop_iter(response_iterator.__anext__())
 
                 read_chunk, header_send_result = await asyncio.gather(
-                    wrap_read_response_stop_iter(response_iterator.__anext__()),
+                    response_future,
                     header_send_future,
                 )
                 while True:
@@ -168,9 +166,10 @@ class App:
                         }
                     )
                     file_write_future = aio_file.write(read_chunk)
+                    response_future = wrap_read_response_stop_iter(response_iterator.__anext__())
 
                     read_chunk, send_result, file_write_result = await asyncio.gather(
-                        wrap_read_response_stop_iter(response_iterator.__anext__()),
+                        response_future,
                         send_future,
                         file_write_future,
                     )
@@ -181,5 +180,4 @@ class App:
 
 
 if __name__ == "__main__":
-    if __name__ == "__main__":
-        uvicorn.run(App, port=5000, log_level="info", loop="uvloop")
+    uvicorn.run(App, port=5000, log_level="info", loop="uvloop")
