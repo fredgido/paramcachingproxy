@@ -1,3 +1,4 @@
+import asyncio
 import pathlib
 from typing import Optional
 
@@ -38,6 +39,8 @@ ext_content_type = {
     "png": b"image/png",
 }
 
+CHUNK_SIZE = int(65536)
+
 
 class App:
     async def __call__(self, scope: HTTPScope, receive, send):
@@ -64,58 +67,91 @@ class App:
 
         file_name = f"{name}.{extension}"
         file_path = twitter_media_path / file_name
-        if file_path.exists():
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 200,
-                    "headers": [
-                        [b"content-type", ext_content_type[extension]],
-                        [b"cache-control", b"max-age=604800"],
-                        # [b"Content-Length", response.headers.get("Content-Length").encode()],
-                        [b"Connection", b"keep-alive"],
-                    ],
-                }
-            )
-            async with aiofiles.open(file_path, "rb") as aio_file:
-                while True:
-                    chunk = await aio_file.read(65534)
-                    if not chunk:
-                        break  # End of file
-                    await send(
-                        {
-                            "type": "http.response.body",
-                            "body": chunk,
-                            "more_body": bool(chunk),
-                        }
-                    )
-                await send({"type": "http.response.body", "body": b""})
+        # if file_path.exists():
+        #     await self.send_file(extension, file_path, send)
+        #     return
 
         download_url = f"https://pbs.twimg.com/{url_type}/{name}?format={extension}&name=orig"
         print(download_url)
-        async with client.stream("GET", download_url) as response:
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 200,
-                    "headers": [
-                        [b"content-type", response.headers.get("content-type", "image/jpg").encode()],
-                        [b"cache-control", response.headers.get("cache-control", "max-age=604800").encode()],
-                        [b"Content-Length", response.headers.get("Content-Length").encode()],
-                        [b"Connection", response.headers.get("Connection", "keep-alive").encode()],
-                    ],
-                }
-            )
-            async for chunk in response.aiter_bytes(chunk_size=65534):
-                await send(
+        async with aiofiles.open(file_path, "wb") as aio_file:
+            async with client.stream("GET", download_url) as response:
+                response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE)
+
+                async def wrap_read_response_stop_iter(future):
+                    try:
+                        return await future
+                    except StopAsyncIteration:
+                        return None
+
+                header_send_future = send(
+                    {
+                        "type": "http.response.start",
+                        "status": 200,
+                        "headers": [
+                            [b"content-type", response.headers.get("content-type", "image/jpg").encode()],
+                            [b"cache-control", response.headers.get("cache-control", "max-age=604800").encode()],
+                            [b"Content-Length", response.headers.get("Content-Length").encode()],
+                            [b"Connection", response.headers.get("Connection", "keep-alive").encode()],
+                        ],
+                    }
+                )
+
+                read_chunk, header_send_result = await asyncio.gather(
+                    wrap_read_response_stop_iter(response_iterator.__anext__()),
+                    header_send_future,
+                )
+                while True:
+                    if not read_chunk:
+                        break
+                    send_future = send(
+                        {
+                            "type": "http.response.body",
+                            "body": read_chunk,
+                            "more_body": True,
+                        }
+                    )
+
+                    read_chunk, send_result = await asyncio.gather(
+                        wrap_read_response_stop_iter(response_iterator.__anext__()),
+                        send_future,
+                    )
+                    if not read_chunk:
+                        break
+
+                await send({"type": "http.response.body", "body": b""})
+        return
+
+    async def send_file(self, extension, file_path, send):
+        header_send_future = send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    [b"content-type", ext_content_type[extension]],
+                    [b"cache-control", b"max-age=604800"],
+                    # [b"Content-Length", response.headers.get("Content-Length").encode()],
+                    [b"Connection", b"keep-alive"],
+                ],
+            }
+        )
+        async with aiofiles.open(file_path, "rb") as aio_file:
+            first_chunk_future = aio_file.read(CHUNK_SIZE)
+            chunk, header_send_result = await asyncio.gather(first_chunk_future, header_send_future)
+            while True:
+                if not chunk:
+                    break
+                chunk_future = aio_file.read(CHUNK_SIZE)
+                send_future = send(
                     {
                         "type": "http.response.body",
                         "body": chunk,
-                        "more_body": bool(chunk),
+                        "more_body": True,
                     }
                 )
-            await send({"type": "http.response.body", "body": b""})
-        return
+                chunk, send_result = await asyncio.gather(chunk_future, send_future)
+                if not chunk:
+                    break
+        await send({"type": "http.response.body", "body": b""})
 
     async def return_error(self, send, error_message: bytes):
         await send(
