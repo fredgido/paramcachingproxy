@@ -19,9 +19,6 @@ function origHandler(info) {
 
 
 const onHeadersReceived = function (details) {
-    console.log("start");
-    console.log(details);
-    console.log(details.responseHeaders);
     for (let i = 0; i < details.responseHeaders.length; i++) {
         if (details.responseHeaders[i].name.toLowerCase() === 'content-security-policy') {
             console.log("removed");
@@ -30,9 +27,6 @@ const onHeadersReceived = function (details) {
 
         }
     }
-    console.log("end");
-    console.log(details);
-    console.log(details.responseHeaders);
     return {
         responseHeaders: details.responseHeaders
     };
