@@ -180,4 +180,4 @@ class App:
 
 
 if __name__ == "__main__":
-    uvicorn.run(App, port=5000, log_level="info", loop="uvloop")
+    uvicorn.run(App, port=5000, log_level="info", loop="uvloop",timeout_keep_alive=70,use_colors=True)
