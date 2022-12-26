@@ -38,6 +38,7 @@ class Connection:
 insert_statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
 
 pool_storage = dict[AbstractEventLoop, Pool]()
+pool_lock = asyncio.Lock()
 
 
 class App:
@@ -61,8 +62,11 @@ class App:
         current_loop = asyncio.get_running_loop()
         pool = pool_storage.get(current_loop)
         if not pool:
-            pool = await asyncpg.create_pool(min_size=10, max_size=100, **connection_creds)
-            pool_storage[current_loop] = pool
+            async with pool_lock:
+                pool = pool_storage.get(current_loop)
+                if not pool:
+                    pool = await asyncpg.create_pool(min_size=10, max_size=23, **connection_creds)
+                    pool_storage[current_loop] = pool
 
         async with pool.acquire() as db_con:
             db_con: APGConnection
@@ -90,4 +94,12 @@ class App:
 
 
 if __name__ == "__main__":
-    uvicorn.run(App, port=1024, log_level="info", loop="uvloop", timeout_keep_alive=70, use_colors=True)
+    uvicorn.run(
+        "api_receiver:App",
+        port=1024,
+        log_level="info",
+        loop="uvloop",
+        timeout_keep_alive=70,
+        #use_colors=True,
+        workers=4,
+    )
