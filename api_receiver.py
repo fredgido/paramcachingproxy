@@ -1,44 +1,40 @@
 import asyncio
 import datetime
-import pathlib
-import re
-import time
 import urllib.parse
-import uuid
-from asyncio import BaseEventLoop, AbstractEventLoop
+from asyncio import AbstractEventLoop
 from dataclasses import dataclass
-from typing import Optional, Callable, Awaitable, Union
+from typing import Optional, Callable, Awaitable
 
-import aiofiles
-import aiofiles.os
 import asyncpg
-import httpx
 import uvicorn
 from asgiref.typing import HTTPScope
 from asyncpg import Connection as APGConnection, Pool
 
 from pg_connection_creds import connection_creds
 
-client = httpx.AsyncClient()
-
-CHUNK_SIZE = int(65536)
-
-ReceiveType = Callable[[], Awaitable]
-SendType = Callable[[dict], Awaitable]
+"""
+create table public.api_dump (
+	id serial primary key,
+	url text not null,
+	data bytea not null,
+	created_at timestamptz not null,
+	processed_at timestamptz null
+);
+"""
+insert_statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
 
 
 @dataclass
 class Connection:
     scope: HTTPScope
-    receive: ReceiveType
-    send: SendType
+    receive: Callable[[], Awaitable]
+    send: Callable[[dict], Awaitable]
+    request_body: dict
     log_info: dict
 
 
-insert_statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
-
 pool_storage = dict[AbstractEventLoop, Pool]()
-pool_lock = asyncio.Lock()
+pool_storage_lock = asyncio.Lock()
 UVICORN_WORKERS = 4
 POOL_MIN_WORKERS = int(10 / float(UVICORN_WORKERS))
 POOL_MAX_WORKERS = int(100 / float(UVICORN_WORKERS)) - 1
@@ -48,7 +44,7 @@ async def get_pg_connection_pool():
     current_loop = asyncio.get_running_loop()
     pool = pool_storage.get(current_loop)
     if not pool:
-        async with pool_lock:
+        async with pool_storage_lock:
             pool = pool_storage.get(current_loop)
             if not pool:
                 pool = await asyncpg.create_pool(
@@ -59,13 +55,12 @@ async def get_pg_connection_pool():
 
 
 class App:
-    async def __call__(self, scope: HTTPScope, receive: ReceiveType, send: SendType):
+    async def __call__(self, scope, receive, send):
         assert scope["type"] == "http"
 
-        connection = Connection(scope, receive, send, dict())
+        connection = Connection(scope, receive, send, await receive(), dict())
         # print(scope)
-        request_body = await receive()
-        # print(r)
+        # print(connection.request_body)
 
         query = urllib.parse.parse_qs(connection.scope["query_string"])
 
@@ -77,11 +72,10 @@ class App:
         url = url_params[0].decode()
 
         pool = await get_pg_connection_pool()
-
         async with pool.acquire() as db_con:
             db_con: APGConnection
             values = await db_con.executemany(
-                insert_statement, [(url, request_body["body"], datetime.datetime.utcnow())]
+                insert_statement, [(url, connection.request_body["body"], datetime.datetime.utcnow())]
             )
         return await self.return_text(connection, b"OK", 200)
 
@@ -114,5 +108,5 @@ if __name__ == "__main__":
         loop="uvloop",
         timeout_keep_alive=70,
         use_colors=True,
-        # workers=4,
+        # workers=UVICORN_WORKERS,
     )
