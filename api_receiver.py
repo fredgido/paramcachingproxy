@@ -5,6 +5,7 @@ import re
 import time
 import urllib.parse
 import uuid
+from asyncio import BaseEventLoop, AbstractEventLoop
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable, Union
 
@@ -34,19 +35,19 @@ class Connection:
     log_info: dict
 
 
-pool: Pool = await asyncpg.create_pool(min_size=10, max_size=100, **connection_creds)
 insert_statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
 
-pool_storage = dict[]()
+pool_storage = dict[AbstractEventLoop, Pool]()
+
 
 class App:
     async def __call__(self, scope: HTTPScope, receive: ReceiveType, send: SendType):
         assert scope["type"] == "http"
 
         connection = Connection(scope, receive, send, dict())
-        #print(scope)
+        # print(scope)
         r = await receive()  # this is nothing
-        #print(r)
+        print(r)
 
         query = urllib.parse.parse_qs(connection.scope["query_string"])
 
@@ -57,9 +58,11 @@ class App:
 
         url = url_params[0].decode()
 
-        pool = pool_storage.get(asyncio.get_running_loop())
+        current_loop = asyncio.get_running_loop()
+        pool = pool_storage.get(current_loop)
         if not pool:
-
+            pool = await asyncpg.create_pool(min_size=10, max_size=100, **connection_creds)
+            pool_storage[current_loop] = pool
 
         async with pool.acquire() as db_con:
             db_con: APGConnection

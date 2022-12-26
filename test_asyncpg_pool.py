@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+from asyncio.unix_events import _UnixSelectorEventLoop
 
 import asyncpg
 from asyncpg import Connection, Pool
@@ -15,9 +16,10 @@ create table public.api_dump (
 	processed_at timestamptz null
 );
 """
-
+_UnixSelectorEventLoop
 
 async def run():
+    print(asyncio.get_running_loop())
     pool: Pool = await asyncpg.create_pool(min_size=10, max_size=100, **connection_creds)
     statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
     async with pool.acquire() as db_con:
