@@ -39,6 +39,23 @@ insert_statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUE
 
 pool_storage = dict[AbstractEventLoop, Pool]()
 pool_lock = asyncio.Lock()
+UVICORN_WORKERS = 4
+POOL_MIN_WORKERS = int(10 / float(UVICORN_WORKERS))
+POOL_MAX_WORKERS = int(100 / float(UVICORN_WORKERS)) - 1
+
+
+async def get_pg_connection_pool():
+    current_loop = asyncio.get_running_loop()
+    pool = pool_storage.get(current_loop)
+    if not pool:
+        async with pool_lock:
+            pool = pool_storage.get(current_loop)
+            if not pool:
+                pool = await asyncpg.create_pool(
+                    min_size=POOL_MIN_WORKERS, max_size=POOL_MAX_WORKERS, **connection_creds
+                )
+                pool_storage[current_loop] = pool
+    return pool
 
 
 class App:
@@ -47,8 +64,8 @@ class App:
 
         connection = Connection(scope, receive, send, dict())
         # print(scope)
-        r = await receive()  # this is nothing
-        print(r)
+        request_body = await receive()
+        # print(r)
 
         query = urllib.parse.parse_qs(connection.scope["query_string"])
 
@@ -59,18 +76,13 @@ class App:
 
         url = url_params[0].decode()
 
-        current_loop = asyncio.get_running_loop()
-        pool = pool_storage.get(current_loop)
-        if not pool:
-            async with pool_lock:
-                pool = pool_storage.get(current_loop)
-                if not pool:
-                    pool = await asyncpg.create_pool(min_size=10, max_size=23, **connection_creds)
-                    pool_storage[current_loop] = pool
+        pool = await get_pg_connection_pool()
 
         async with pool.acquire() as db_con:
             db_con: APGConnection
-            values = await db_con.executemany(insert_statement, [(url, r["body"], datetime.datetime.utcnow())])
+            values = await db_con.executemany(
+                insert_statement, [(url, request_body["body"], datetime.datetime.utcnow())]
+            )
         return await self.return_text(connection, b"OK", 200)
 
     @staticmethod
@@ -98,8 +110,9 @@ if __name__ == "__main__":
         "api_receiver:App",
         port=1024,
         log_level="info",
+        # log_level="critical",
         loop="uvloop",
         timeout_keep_alive=70,
-        #use_colors=True,
-        workers=4,
+        use_colors=True,
+        # workers=4,
     )
