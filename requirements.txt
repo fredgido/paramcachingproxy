@@ -6,3 +6,4 @@ httpx
 uvloop
 asgiref
 aiofiles
+asyncpg
