@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import pathlib
 import re
 import time
@@ -9,13 +10,15 @@ from typing import Optional, Callable, Awaitable, Union
 
 import aiofiles
 import aiofiles.os
+import asyncpg
 import httpx
 import uvicorn
 from asgiref.typing import HTTPScope
+from asyncpg import Connection as APGConnection, Pool
 
+from pg_connection_creds import connection_creds
 
 client = httpx.AsyncClient()
-
 
 CHUNK_SIZE = int(65536)
 
@@ -31,15 +34,36 @@ class Connection:
     log_info: dict
 
 
+pool: Pool = await asyncpg.create_pool(min_size=10, max_size=100, **connection_creds)
+insert_statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
+
+pool_storage = dict[]()
+
 class App:
     async def __call__(self, scope: HTTPScope, receive: ReceiveType, send: SendType):
         assert scope["type"] == "http"
 
-
         connection = Connection(scope, receive, send, dict())
-        print(scope)
+        #print(scope)
         r = await receive()  # this is nothing
-        print(r)
+        #print(r)
+
+        query = urllib.parse.parse_qs(connection.scope["query_string"])
+
+        url_params: Optional[list[bytes]] = query.get(b"url")
+        if not url_params:
+            print(query, "failed")
+            return await self.return_text(connection, b"Missing query param", 400)
+
+        url = url_params[0].decode()
+
+        pool = pool_storage.get(asyncio.get_running_loop())
+        if not pool:
+
+
+        async with pool.acquire() as db_con:
+            db_con: APGConnection
+            values = await db_con.executemany(insert_statement, [(url, r["body"], datetime.datetime.utcnow())])
         return await self.return_text(connection, b"OK", 200)
 
     @staticmethod
