@@ -1,0 +1,5 @@
+https://api.twitter.com/1.1/jot/client_event.json?keepalive=false
+https://api.twitter.com/1.1/jot/client_event.json?keepalive=true
+https://api.twitter.com/1.1/jot/error_log.json
+https://api.twitter.com/1.1/hashflags.json
+

@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 
 import asyncpg
 from asyncpg import Connection
@@ -19,14 +20,16 @@ create table public.api_dump (
 
 async def run():
     db_con: Connection = await asyncpg.connect(**connection_creds)
-    # values = await db_con.fetch(
-    #     "SELECT * FROM test_table WHERE id = $1",
-    #     1,
-    # )
+    values = await db_con.fetch(
+        "SELECT * FROM public.api_dump WHERE id = $1",
+        2794617,
+    )
+    print(values[0])
+    i = values[0][2][:-2].decode("utf-16")
+    print(json.loads(values[0][2].decode("utf-16")))
+    # statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
+    # values = await db_con.executemany(statement, [("localhost", b"B", datetime.datetime.utcnow())])
     # print(values)
-    statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
-    values = await db_con.executemany(statement, [("localhost", b"B", datetime.datetime.utcnow())])
-    print(values)
 
     await db_con.close()
 

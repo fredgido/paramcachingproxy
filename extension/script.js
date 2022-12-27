@@ -21,11 +21,7 @@ function origHandler(info) {
 const onHeadersReceived = function (details) {
     for (let i = 0; i < details.responseHeaders.length; i++) {
         if (details.responseHeaders[i].name.toLowerCase() === 'content-security-policy') {
-            console.log("removed");
-            //details.responseHeaders[i].value = '';
-            // details.responseHeaders[i].value = "default-src * blob: 'unsafe-inline' 'unsafe-eval'; script-src * blob: 'unsafe-inline' 'unsafe-eval'; connect-src * blob: 'unsafe-inline'; img-src * data: blob: 'unsafe-inline'; frame-src * blob: ; style-src * blob: 'unsafe-inline';";
             details.responseHeaders[i].value = `'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
-
         }
     }
     return {

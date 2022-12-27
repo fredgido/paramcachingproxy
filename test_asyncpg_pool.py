@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-from asyncio.unix_events import _UnixSelectorEventLoop
 
 import asyncpg
 from asyncpg import Connection, Pool
@@ -16,7 +15,7 @@ create table public.api_dump (
 	processed_at timestamptz null
 );
 """
-_UnixSelectorEventLoop
+
 
 async def run():
     print(asyncio.get_running_loop())
