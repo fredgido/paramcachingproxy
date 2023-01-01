@@ -21,7 +21,7 @@ APIOnedotOneHomeEntry = TypedDict(
         "full_text": str,
         "truncated": bool,
         "display_text_range": list[int],
-        "entities":dict,
+        "entities": dict,
         #     {
         #     "hashtags": [],
         #     "symbols": [],
@@ -77,51 +77,51 @@ APIOnedotOneHomeEntry = TypedDict(
         #     ],
         # },
         "extended_entities": dict,
-# {
-#             "media": [
-#                 {
-#                     "id": 1607389485482016769,
-#                     "id_str": "1607389485482016769",
-#                     "indices": [39, 62],
-#                     "media_url": "http://pbs.twimg.com/media/Fk6YOIHagAENaJT.jpg",
-#                     "media_url_https": "https://pbs.twimg.com/media/Fk6YOIHagAENaJT.jpg",
-#                     "url": "https://t.co/HM1zpXfLXi",
-#                     "display_url": "pic.twitter.com/HM1zpXfLXi",
-#                     "expanded_url": "https://twitter.com/xx682567/status/1607389576313856003/photo/1",
-#                     "type": "photo",
-#                     "original_info": {
-#                         "width": 1838,
-#                         "height": 1500,
-#                         "focus_rects": [
-#                             {"x": 0, "y": 0, "h": 1029, "w": 1838},
-#                             {"x": 214, "y": 0, "h": 1500, "w": 1500},
-#                             {"x": 306, "y": 0, "h": 1500, "w": 1316},
-#                             {"x": 589, "y": 0, "h": 1500, "w": 750},
-#                             {"x": 0, "y": 0, "h": 1500, "w": 1838},
-#                         ],
-#                     },
-#                     "sizes": {
-#                         "thumb": {"w": 150, "h": 150, "resize": "crop"},
-#                         "small": {"w": 680, "h": 555, "resize": "fit"},
-#                         "large": {"w": 1838, "h": 1500, "resize": "fit"},
-#                         "medium": {"w": 1200, "h": 979, "resize": "fit"},
-#                     },
-#                     "source_status_id": 1607389576313856003,
-#                     "source_status_id_str": "1607389576313856003",
-#                     "source_user_id": 3119110320,
-#                     "source_user_id_str": "3119110320",
-#                     "features": {
-#                         "small": {"faces": []},
-#                         "orig": {"faces": []},
-#                         "large": {"faces": []},
-#                         "medium": {"faces": []},
-#                     },
-#                     "media_key": "3_1607389485482016769",
-#                     "ext_alt_text": None,
-#                 }
-#             ]
-#         },
-        "source": str, # '<a href="https://mobile.twitter.com" rel="nofollow">Twitter Web App</a>'
+        # {
+        #             "media": [
+        #                 {
+        #                     "id": 1607389485482016769,
+        #                     "id_str": "1607389485482016769",
+        #                     "indices": [39, 62],
+        #                     "media_url": "http://pbs.twimg.com/media/Fk6YOIHagAENaJT.jpg",
+        #                     "media_url_https": "https://pbs.twimg.com/media/Fk6YOIHagAENaJT.jpg",
+        #                     "url": "https://t.co/HM1zpXfLXi",
+        #                     "display_url": "pic.twitter.com/HM1zpXfLXi",
+        #                     "expanded_url": "https://twitter.com/xx682567/status/1607389576313856003/photo/1",
+        #                     "type": "photo",
+        #                     "original_info": {
+        #                         "width": 1838,
+        #                         "height": 1500,
+        #                         "focus_rects": [
+        #                             {"x": 0, "y": 0, "h": 1029, "w": 1838},
+        #                             {"x": 214, "y": 0, "h": 1500, "w": 1500},
+        #                             {"x": 306, "y": 0, "h": 1500, "w": 1316},
+        #                             {"x": 589, "y": 0, "h": 1500, "w": 750},
+        #                             {"x": 0, "y": 0, "h": 1500, "w": 1838},
+        #                         ],
+        #                     },
+        #                     "sizes": {
+        #                         "thumb": {"w": 150, "h": 150, "resize": "crop"},
+        #                         "small": {"w": 680, "h": 555, "resize": "fit"},
+        #                         "large": {"w": 1838, "h": 1500, "resize": "fit"},
+        #                         "medium": {"w": 1200, "h": 979, "resize": "fit"},
+        #                     },
+        #                     "source_status_id": 1607389576313856003,
+        #                     "source_status_id_str": "1607389576313856003",
+        #                     "source_user_id": 3119110320,
+        #                     "source_user_id_str": "3119110320",
+        #                     "features": {
+        #                         "small": {"faces": []},
+        #                         "orig": {"faces": []},
+        #                         "large": {"faces": []},
+        #                         "medium": {"faces": []},
+        #                     },
+        #                     "media_key": "3_1607389485482016769",
+        #                     "ext_alt_text": None,
+        #                 }
+        #             ]
+        #         },
+        "source": str,  # '<a href="https://mobile.twitter.com" rel="nofollow">Twitter Web App</a>'
         "in_reply_to_status_id": None,
         "in_reply_to_status_id_str": None,
         "in_reply_to_user_id": None,
@@ -432,69 +432,85 @@ APIOnedotOneHomeEntry = TypedDict(
         "possibly_sensitive": bool,
         "possibly_sensitive_appealable": bool,
         "lang": Optional[str],
-        "supplemental_language":Optional[str],
+        "supplemental_language": Optional[str],
     },
 )
 
-for entry in data:
-    entry : APIOnedotOneHomeEntry
-    tweet_id = entry["id_str"]
-    full_text = entry["full_text"]
-    language = entry["lang"]
-    retweet_count = entry["retweet_count"]
-    favorite_count = entry["favorite_count"]
-    reply_count = entry["reply_count"]
-    is_quote_status = entry["is_quote_status"]
-    views = None
-    conversation_id = entry["conversation_id_str"]
-    hashtags = entry["entities"]["hashtags"]
-    symbols = entry["entities"]["symbols"]
-    user_mentions = entry["entities"]["user_mentions"]
-    urls = entry["entities"]["urls"]
-    media = list[dict]()
-    is_retweet = bool(entry.get("retweeted_status"))
 
-    for asset in entry["extended_entities"]:
+def extract_tweet_data(entry):
+    tweet = dict(
+        tweet_id=entry["id_str"],
+        full_text=entry["full_text"],
+        language=entry["lang"],
+        retweet_count=entry["retweet_count"],
+        favorite_count=entry["favorite_count"],
+        reply_count=entry["reply_count"],
+        is_quote_status=entry["is_quote_status"],
+        views=None,
+        conversation_id=entry["conversation_id_str"],
+        hashtags=entry["entities"]["hashtags"],
+        symbols=entry["entities"]["symbols"],
+        user_mentions=entry["entities"]["user_mentions"],
+        urls=entry["entities"]["urls"],
+        is_retweet=bool(entry.get("retweeted_status")),
+    )
+    return tweet
+
+
+def extract_assets_data(entry) -> list[dict]:
+    media = list[dict]()
+    for asset in entry["extended_entities"]["media"]:
         subdomain, url_type, name, extension = twitter_url_to_orig(asset["media_url_https"])
         if not name:
             raise Exception("no name")
         media_asset = {
-            "id":asset["id_str"],
+            "id": asset["id_str"],
             "url": asset["media_url_https"],
-            "width" : asset["original_info"]["width"],
+            "width": asset["original_info"]["width"],
             "height": asset["original_info"]["height"],
-            "post_id" : asset["source_status_id_str"],
+            "post_id": asset["source_status_id_str"],
             "name": name,
-            "extension":extension,
-            "ext_alt_text" : asset["ext_alt_text"]
-            #datetime nullable from file request
+            "extension": extension,
+            "ext_alt_text": asset["ext_alt_text"]
+            # datetime nullable from file request
         }
         media.append(media_asset)
+    return media
+
+
+def extract_users_data(entry) -> list[dict]:
     users = list[dict]()
     users.append(
-    {
-        "id": entry["user"]["id_str"],
-        "created_at": parse(entry["user"]["created_at"]),
-        "name": entry["user"]["name"],
-        "screen_name": entry["user"]["screen_name"],
-        "location":entry["user"]["location"],
-        "description": entry["user"]["description"],
-        "location": entry["user"]["location"],
-        "urls": (
-            [u["expanded_url"] for u in entry["user"]["entities"]["url"]["urls"]
-            +
-             [u["expanded_url"] for u in entry["user"]["entities"]["description"]["urls"]
-        )
-             ,
-        "protected": entry["user"]["protected"],
-        "followers_count": entry["user"]["followers_count"],
-        "friends_count": entry["user"]["friends_count"],
-        "listed_count": entry["user"]["listed_count"],
-        "statuses_count": entry["user"]["statuses_count"],
-        "media_count": entry["user"]["media_count"],
-        "profile_image_url_https": entry["user"]["profile_image_url_https"],
-        "profile_banner_url": entry["user"]["profile_banner_url"],
-
-        # datetime nullable from file request
-    }
+        {
+            "id": entry["user"]["id_str"],
+            "created_at": parse(entry["user"]["created_at"]),
+            "name": entry["user"]["name"],
+            "screen_name": entry["user"]["screen_name"],
+            "location": entry["user"]["location"],
+            "description": entry["user"]["description"],
+            "location": entry["user"]["location"],
+            "urls": (
+                [u["expanded_url"] for u in entry["user"]["entities"]["url"]["urls"]]
+                + [u["expanded_url"] for u in entry["user"]["entities"]["description"]["urls"]]
+            ),
+            "protected": entry["user"]["protected"],
+            "followers_count": entry["user"]["followers_count"],
+            "friends_count": entry["user"]["friends_count"],
+            "listed_count": entry["user"]["listed_count"],
+            "statuses_count": entry["user"]["statuses_count"],
+            "media_count": entry["user"]["media_count"],
+            "profile_image_url_https": entry["user"]["profile_image_url_https"],
+            "profile_banner_url": entry["user"]["profile_banner_url"],
+            # datetime nullable from file request
+        }
     )
+    return users
+
+
+if __name__ == "__main__":
+    for entry in data:
+        entry: APIOnedotOneHomeEntry
+        tweets_data = [extract_tweet_data(entry)]
+        assets_data = extract_assets_data(entry)
+        users_data = extract_users_data(entry)
+        print(tweet_data)
