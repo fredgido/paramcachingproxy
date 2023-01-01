@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
 import asyncpg
+import orjson
 import uvicorn
 from asgiref.typing import HTTPScope
 from asyncpg import Connection as APGConnection, Pool
@@ -29,7 +30,7 @@ class Connection:
     scope: HTTPScope
     receive: Callable[[], Awaitable]
     send: Callable[[dict], Awaitable]
-    request_body: dict
+    request_body: bytes
     log_info: dict
 
 
@@ -58,9 +59,28 @@ class App:
     async def __call__(self, scope, receive, send):
         assert scope["type"] == "http"
 
-        connection = Connection(scope, receive, send, await receive(), dict())
+        query = urllib.parse.parse_qs(scope["query_string"])
+
+        url_params: Optional[list[bytes]] = query.get(b"url")
+        url = url_params[0].decode()
+
+        body = b""
+        data = await receive()
+        #print(data, url)
+        body += data["body"]
+        while data["more_body"]:
+            data = await receive()
+            #print(data, url)
+            body += data["body"]
+        connection = Connection(scope, receive, send, body, dict())
         # print(scope)
-        # print(connection.request_body)
+        #print(connection.request_body)
+        try:
+            if body:
+                t = orjson.loads(body)
+                #print(t, url)
+        except Exception:
+            print("fail decode", url)
 
         query = urllib.parse.parse_qs(connection.scope["query_string"])
 
@@ -75,7 +95,7 @@ class App:
         async with pool.acquire() as db_con:
             db_con: APGConnection
             values = await db_con.executemany(
-                insert_statement, [(url, connection.request_body["body"], datetime.datetime.utcnow())]
+                insert_statement, [(url, connection.request_body, datetime.datetime.utcnow())]
             )
         return await self.return_text(connection, b"OK", 200)
 

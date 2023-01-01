@@ -1,4 +1,5 @@
 import asyncio
+import os
 import pathlib
 import re
 import time
@@ -17,20 +18,21 @@ CoroutineFunction = Callable[[Union[dict, type(None)]], Awaitable]
 
 client = httpx.AsyncClient()
 
-twitter_media_path = pathlib.Path("twitter_media")
+path_settings = os.getenv("MEDIA_FOLDER", ".")
+twitter_media_path = pathlib.Path(f"{path_settings}/twitter_media")
 twitter_media_path.mkdir(exist_ok=True)
 
-twitter_url_regex_str = r"\.twimg\.com\/(?P<type>tweet_video_thumb|media)/(?P<name>[a-zA-Z\d_-]*)(?:\?format=|.)(?P<extension>[a-zA-Z]{3,4})"
+twitter_url_regex_str = r"(?P<subdomain>[^.\/]*)\.twimg\.com\/(?P<type>tweet_video_thumb|media|tweet_video)/(?P<name>[a-zA-Z\d_-]*)(?:\?format=|\.)(?P<extension>[a-zA-Z0-9]{3,4})"
 twitter_url_regex = re.compile(twitter_url_regex_str)
 
 
 def twitter_url_to_orig(twitter_url: str):
     match = twitter_url_regex.search(twitter_url)
     if not match:
-        None, None, None
+        None, None, None, None
 
     capture_groups = match.groupdict()
-    return capture_groups["type"], capture_groups["name"], capture_groups["extension"]
+    return capture_groups["subdomain"], capture_groups["type"], capture_groups["name"], capture_groups["extension"]
 
 
 ext_content_type = {
@@ -38,6 +40,7 @@ ext_content_type = {
     "jpeg": b"image/jpeg",
     "jpg": b"image/jpeg",
     "png": b"image/png",
+    "mp4": b"video/mp4",
 }
 
 CHUNK_SIZE = int(65536)
@@ -80,7 +83,7 @@ class App:
 
         url = url_params[0].decode()
         connection.log_info["url"] = url
-        url_type, name, extension = twitter_url_to_orig(url)
+        subdomain, url_type, name, extension = twitter_url_to_orig(url)
         connection.log_info["url_type"] = url_type
         connection.log_info["name"] = name
         connection.log_info["extension"] = extension
@@ -98,7 +101,10 @@ class App:
             print(connection.log_info)
             return
 
-        download_url = f"https://pbs.twimg.com/{url_type}/{name}?format={extension}&name=orig"
+        if subdomain == "video":
+            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}.{extension}"
+        else:
+            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}?format={extension}&name=orig"
         print(download_url)
         await self.download_file_write_file_send_file(connection, download_url, file_path)
         connection.log_info["file_exists"] = False
@@ -169,7 +175,7 @@ class App:
         file_path_placeholder = str(file_path) + str(uuid.uuid4())
         connection.log_info["download_start_time"] = time.perf_counter() - connection.log_info["start_time"]
         async with aiofiles.open(file_path_placeholder, "wb") as aio_file:
-            async with client.stream("GET", download_url) as response:
+            async with client.stream("GET", download_url) as response:  # todo save headers
                 connection.log_info["response_time"] = time.perf_counter() - connection.log_info["start_time"]
                 response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE)
 
@@ -198,7 +204,7 @@ class App:
                     header_send_future,
                 )
                 connection.log_info["header_first_chunk_time"] = time.perf_counter() - connection.log_info["start_time"]
-                connection.log_info["chunks_size"] += len(read_chunk)
+                connection.log_info["chunks_size"] += len(read_chunk) if read_chunk else 0
                 while True:
                     if not read_chunk:
                         break

@@ -12,6 +12,7 @@
     "webRequest",
     "webRequestBlocking",
     "*://pbs.twimg.com/media/",
+    "*://video.twimg.com/tweet_video/",
     "*://twitter.com/",
     "*://mobile.twitter.com/",
     "*://tweetdeck.twitter.com/",
