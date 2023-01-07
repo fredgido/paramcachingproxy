@@ -1,3 +1,19 @@
+
+
+
+// Twitter api
+const apiFilter =
+    {
+        urls: ['*://api.twitter.com/*']
+    };
+
+function apiHandler(info) {
+    console.log(info);
+}
+
+chrome.webRequest.onCompleted.addListener(apiHandler, apiFilter);
+
+
 let active = true;
 
 ///
@@ -10,14 +26,15 @@ const origFilter =
         urls: ['*://pbs.twimg.com/media/*', '*://video.twimg.com/tweet_video/*'] /*, '*://video.twimg.com/ext_tw_video'],*/
     };
 
-chrome.webRequest.onBeforeRequest.addListener(origHandler, origFilter, ['blocking']);
-
 function origHandler(info) {
     let {url} = info;
 
     const newUrl = "http://127.0.0.1:5000/twitter_proxy?url=" + encodeURIComponent(url);
     return {redirectUrl: newUrl};
 }
+
+chrome.webRequest.onBeforeRequest.addListener(origHandler, origFilter, ['blocking']);
+
 
 /*
 // Twitter video URL scrubbed idea
@@ -84,14 +101,7 @@ const onHeadersReceived = function (details) {
         }
     ];
 
-    console.log(details.responseHeaders)
-    console.log(JSON.stringify(details.responseHeaders))
-    console.log(details)
-
     addOrReplaceHeader(details.responseHeaders, crossDomainHeaders);
-    console.log(details.responseHeaders)
-    console.log(JSON.stringify(details.responseHeaders))
-    console.log(details)
 
     return {
         responseHeaders: details.responseHeaders
@@ -99,7 +109,9 @@ const onHeadersReceived = function (details) {
 };
 
 const onHeaderFilter = {
-    urls: ['*://*/*'],
+    urls: [    "*://twitter.com/*",
+    "*://mobile.twitter.com/*",
+    "*://tweetdeck.twitter.com/*",],
 };
 
 chrome.webRequest.onHeadersReceived.addListener(

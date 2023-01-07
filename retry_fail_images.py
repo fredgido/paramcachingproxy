@@ -7,7 +7,7 @@ import httpx
 
 from asgi import twitter_url_to_orig
 
-MEDIA_FOLDER = ""
+MEDIA_FOLDER = "/media/fredfernandes/Elements/twitter_dump/twitter_media"
 bad_images = []
 
 for file in pathlib.Path(f"{MEDIA_FOLDER}/twitter_media").glob("*"):

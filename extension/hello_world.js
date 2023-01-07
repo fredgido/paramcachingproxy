@@ -28,7 +28,8 @@ const injectedScript = "(" +
             // });
             fetch('http://localhost:1024/notify?url=' + encodeURIComponent(xhr.responseURL), {
                 method: 'post',
-                body: xhr.responseText
+                body: xhr.responseText,
+                headers:{'url': encodeURIComponent(xhr.responseURL)}
             }).then(function (data) {
                 console.log("sent " + xhr.responseURL);
             });

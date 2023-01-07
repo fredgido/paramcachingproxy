@@ -5,13 +5,6 @@ from dateutil.parser import parse
 
 from asgi import twitter_url_to_orig
 
-data = orjson.loads(open("temp/2853971.json", "rb").read())
-
-print(data)
-
-
-tweets = dict[int:dict]()
-
 APIOnedotOneHomeEntry = TypedDict(
     "APIOnedotOneHomeEntry",
     {
@@ -439,7 +432,7 @@ APIOnedotOneHomeEntry = TypedDict(
 
 def extract_tweet_data(entry):
     tweet = dict(
-        tweet_id=entry["id_str"],
+        id=entry["id_str"],
         full_text=entry["full_text"],
         language=entry["lang"],
         retweet_count=entry["retweet_count"],
@@ -490,8 +483,8 @@ def extract_users_data(entry) -> list[dict]:
             "description": entry["user"]["description"],
             "location": entry["user"]["location"],
             "urls": (
-                [u["expanded_url"] for u in entry["user"]["entities"]["url"]["urls"]]
-                + [u["expanded_url"] for u in entry["user"]["entities"]["description"]["urls"]]
+                    [u["expanded_url"] for u in entry["user"]["entities"]["url"]["urls"]]
+                    + [u["expanded_url"] for u in entry["user"]["entities"]["description"]["urls"]]
             ),
             "protected": entry["user"]["protected"],
             "followers_count": entry["user"]["followers_count"],
@@ -508,9 +501,24 @@ def extract_users_data(entry) -> list[dict]:
 
 
 if __name__ == "__main__":
-    for entry in data:
-        entry: APIOnedotOneHomeEntry
-        tweets_data = [extract_tweet_data(entry)]
-        assets_data = extract_assets_data(entry)
-        users_data = extract_users_data(entry)
-        print(tweet_data)
+    data = orjson.loads(open("temp/2853971.json", "rb").read())
+
+    print(data)
+
+    tweets = dict[int:dict]()
+    assets = dict[tuple[str, str]: dict]()
+    users = dict[int:dict]()
+
+    for tweet_entry in data:
+        tweet_entry: APIOnedotOneHomeEntry
+        tweet = extract_tweet_data(tweet_entry)
+        tweets[int(tweet["id"])] = tweet
+        assets_data = extract_assets_data(tweet_entry)
+        for asset_data in assets_data:
+            assets[(asset_data["name"], asset_data["extension"])] = asset_data
+        users_data = extract_users_data(tweet_entry)
+        for user_data in users_data:
+            users[int(user_data["id"])] = users_data
+    print(tweets)
+    print(assets)
+    print(users)
