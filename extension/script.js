@@ -1,3 +1,5 @@
+let active = true;
+
 ///
 // Redirect Twitter image URLs to original quality
 ///
@@ -5,7 +7,7 @@
 // Twitter image URL
 const origFilter =
     {
-        urls: ['*://pbs.twimg.com/media/*','*://video.twimg.com/tweet_video/*'] /*, '*://video.twimg.com/ext_tw_video'],*/
+        urls: ['*://pbs.twimg.com/media/*', '*://video.twimg.com/tweet_video/*'] /*, '*://video.twimg.com/ext_tw_video'],*/
     };
 
 chrome.webRequest.onBeforeRequest.addListener(origHandler, origFilter, ['blocking']);
@@ -38,7 +40,7 @@ function videoHandler(info) {
 const onHeadersReceived = function (details) {
     for (let i = 0; i < details.responseHeaders.length; i++) {
         if (details.responseHeaders[i].name.toLowerCase() === 'content-security-policy') {
-            details.responseHeaders[i].value = `'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
+            details.responseHeaders[i].value = `default-src 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
         }
     }
     return {
@@ -53,3 +55,21 @@ const onHeaderFilter = {
 chrome.webRequest.onHeadersReceived.addListener(
     onHeadersReceived, onHeaderFilter, ['blocking', 'responseHeaders']
 );
+
+
+chrome.browserAction.onClicked.addListener(function (tab) {
+    if (active) {
+        active = false;
+        chrome.webRequest.onHeadersReceived.removeListener(onHeadersReceived);
+        chrome.webRequest.onBeforeRequest.removeListener(origHandler);
+        console.log("deactivated");
+        chrome.browserAction.setIcon({path: "32_off.png"});
+    } else {
+        active = true;
+        chrome.webRequest.onHeadersReceived.addListener(onHeadersReceived, onHeaderFilter, ['blocking', 'responseHeaders']);
+        chrome.webRequest.onBeforeRequest.addListener(origHandler, origFilter, ['blocking']);
+        console.log("activated");
+        chrome.browserAction.setIcon({path: "32.png"});
+
+    }
+});

@@ -3,9 +3,15 @@
   "name": "Parameter Proxy Extension",
   "description": "",
   "version": "0.0.0.1",
-  "action": {
-    "default_popup": "description.html",
-    "default_icon": "icon.png"
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "browser_action": {
+    "default_title": "Content-Security-Policy headers are enabled",
+    "default_icon": {
+      "128":"icon.png"
+    }
   },
   "permissions": [
     "activeTab",
@@ -24,5 +30,11 @@
       "script.js"
     ],
     "persistent": true
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.twitter.com/*","*://twitter.com/*"],
+      "js": ["hello_world.js"]
+    }
+  ]
 }
