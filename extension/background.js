@@ -19,42 +19,42 @@ function onMessage(request, sender, sendResponse) {
     fetch('http://localhost:1024/notify?url=' + encodeURIComponent(request.detail.url), {
         method: 'post',
         body: request.detail.body,
+        mode: 'no-cors',
     });
 }
 
 // headers
 function onHeadersReceived(e) {
     let hdrs = e.responseHeaders;
-
     for (let i = 0, n = hdrs.length; i < n; ++i) {
         if (hdrs[i].name.toLowerCase() === 'content-security-policy') {
-            hdrs[i].value = `script-src 'self' 'unsafe-eval'; default-src 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
+            hdrs[i].value = `default-src 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
         }
     }
-
     return {responseHeaders: hdrs};
 }
 
 
 function activateListeners() {
     browser.runtime.onMessage.addListener(onMessage);
-    browser.webRequest.onHeadersReceived.addListener(
-        onHeadersReceived,
-        {urls: ['*://*.twitter.com/*',]},
-        ['blocking', 'responseHeaders']
+    browser.webRequest.onBeforeRequest.addListener(
+        onBeforeReq,
+        {
+            urls: ['*://pbs.twimg.com/media/*', '*://video.twimg.com/tweet_video/*'],
+        },
+        [`blocking`]
     );
-    browser.webRequest.onHeadersReceived.addListener(
-        onHeadersReceived,
-        {urls: ['*://*.twitter.com/*',]},
-        ['blocking', 'responseHeaders']
-    );
+    // browser.webRequest.onHeadersReceived.addListener(
+    //     onHeadersReceived,
+    //     {urls: ['*://*.twitter.com/*',]},
+    //     ['blocking', 'responseHeaders']
+    // );
 }
-
 
 function disableListeners() {
     browser.runtime.onMessage.removeListener(onMessage);
-    browser.webRequest.onHeadersReceived.removeListener(onHeadersReceived);
-    browser.webRequest.onHeadersReceived.removeListener(onHeadersReceived);
+    browser.webRequest.onBeforeRequest.removeListener(onBeforeReq);
+    //browser.webRequest.onHeadersReceived.removeListener(onHeadersReceived);
 }
 
 
@@ -73,4 +73,9 @@ chrome.browserAction.onClicked.addListener(function (tab) {
 });
 
 
+browser.webRequest.onHeadersReceived.addListener(
+    onHeadersReceived,
+    {urls: ['*://*.twitter.com/*',]},
+    ['blocking', 'responseHeaders']
+);
 activateListeners();
