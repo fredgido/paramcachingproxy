@@ -1,19 +1,3 @@
-
-
-
-// Twitter api
-const apiFilter =
-    {
-        urls: ['*://api.twitter.com/*']
-    };
-
-function apiHandler(info) {
-    console.log(info);
-}
-
-chrome.webRequest.onCompleted.addListener(apiHandler, apiFilter);
-
-
 let active = true;
 
 ///
@@ -109,9 +93,11 @@ const onHeadersReceived = function (details) {
 };
 
 const onHeaderFilter = {
-    urls: [    "*://twitter.com/*",
-    "*://mobile.twitter.com/*",
-    "*://tweetdeck.twitter.com/*",],
+    urls: [
+        "*://twitter.com/*",
+        "*://mobile.twitter.com/*",
+        "*://tweetdeck.twitter.com/*",
+    ],
 };
 
 chrome.webRequest.onHeadersReceived.addListener(

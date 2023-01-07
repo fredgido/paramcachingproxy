@@ -1,39 +1,12 @@
-import pathlib
-
-import httpx
-import uvicorn
-from blacksheep import Application, Response, Content, StreamedContent
-import re
-
-twitter_media_path = pathlib.Path("twitter_media")
-twitter_media_path.mkdir(exist_ok=True)
-
-image_name_url_regex_str = r"\/media\/(?P<name>[a-zA-Z\d]*)\.(?P<extension>[a-z]*)"
-
-image_name_url_regex = re.compile(image_name_url_regex_str)
-
-app = Application()
-client = httpx.AsyncClient()
-
-
-@app.route("/stream_test")
-async def stream_test():
-    test_url = "https://pbs.twimg.com/media/FkqZQYrakAA5P5h.jpg:orig"
-
-    match = image_name_url_regex.search(test_url)
-
-    if not match:
-        print(test_url, "failed")
-        return Response(200, content=Content(b"text/plain", b"Not Found"))
-
-    async def provider():
-        async with client.stream("GET", test_url) as response:
-            async for chunk in response.aiter_bytes(chunk_size=65534):
-                yield chunk
-
-    return Response(200, content=StreamedContent(b"image/jpeg", provider))
-
-
-if __name__ == "__main__":
-    if __name__ == "__main__":
-        uvicorn.run(app, port=5000, log_level="info")
+{'type': 'http', 'asgi': {'version': '3.0', 'spec_version': '2.3'}, 'http_version': '1.1',
+ 'server': ('127.0.0.1', 1024), 'client': ('127.0.0.1', 60530), 'scheme': 'http', 'root_path': '',
+ 'headers': [(b'host', b'localhost:1024'), (b'connection', b'keep-alive'), (b'content-length', b'23849'),
+             (b'sec-ch-ua', b'"Not?A_Brand";v="8", "Chromium";v="108", "Google Chrome";v="108"'), (b'accept', b'*/*'),
+             (b'sec-ch-ua-platform', b'"Linux"'), (b'dnt', b'1'), (b'sec-ch-ua-mobile', b'?0'), (b'user-agent',
+                                                                                                 b'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'),
+             (b'content-type', b'text/plain;charset=UTF-8'), (b'origin', b'https://twitter.com'),
+             (b'sec-fetch-site', b'cross-site'), (b'sec-fetch-mode', b'cors'), (b'sec-fetch-dest', b'empty'),
+             (b'accept-encoding', b'gzip, deflate, br'),
+             (b'accept-language', b'en-US,en;q=0.9,pt-PT;q=0.8,pt;q=0.7,ja;q=0.6,zh-CN;q=0.5,zh;q=0.4')],
+ 'method': 'POST', 'path': '/notify', 'raw_path': b'/notify',
+ 'query_string': b'url=https%3A%2F%2Fapi.twitter.com%2Fgraphql%2Fd9VslTaZvKUSOh88ntOT_g%2FTweetDetail%3Fvariables%3D%257B%2522focalTweetId%2522%253A%25221611395001027526656%2522%252C%2522with_rux_injections%2522%253Afalse%252C%2522includePromotedContent%2522%253Atrue%252C%2522withCommunity%2522%253Atrue%252C%2522withQuickPromoteEligibilityTweetFields%2522%253Atrue%252C%2522withBirdwatchNotes%2522%253Atrue%252C%2522withSuperFollowsUserFields%2522%253Atrue%252C%2522withDownvotePerspective%2522%253Afalse%252C%2522withReactionsMetadata%2522%253Afalse%252C%2522withReactionsPerspective%2522%253Afalse%252C%2522withSuperFollowsTweetFields%2522%253Atrue%252C%2522withVoice%2522%253Atrue%252C%2522withV2Timeline%2522%253Atrue%257D%26features%3D%257B%2522responsive_web_twitter_blue_verified_badge_is_enabled%2522%253Atrue%252C%2522verified_phone_label_enabled%2522%253Afalse%252C%2522responsive_web_graphql_timeline_navigation_enabled%2522%253Atrue%252C%2522view_counts_public_visibility_enabled%2522%253Atrue%252C%2522view_counts_everywhere_api_enabled%2522%253Atrue%252C%2522tweetypie_unmention_optimization_enabled%2522%253Atrue%252C%2522responsive_web_uc_gql_enabled%2522%253Atrue%252C%2522vibe_api_enabled%2522%253Atrue%252C%2522responsive_web_edit_tweet_api_enabled%2522%253Atrue%252C%2522graphql_is_translatable_rweb_tweet_is_translatable_enabled%2522%253Atrue%252C%2522standardized_nudges_misinfo%2522%253Atrue%252C%2522tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled%2522%253Afalse%252C%2522interactive_text_enabled%2522%253Atrue%252C%2522responsive_web_text_conversations_enabled%2522%253Afalse%252C%2522responsive_web_enhance_cards_enabled%2522%253Afalse%257D'}

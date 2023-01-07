@@ -31,5 +31,11 @@
       "script.js"
     ],
     "persistent": true
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.twitter.com/*","*://twitter.com/*"],
+      "js": ["hello_world.js"]
+    }
+  ]
 }
