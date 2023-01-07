@@ -8,10 +8,7 @@ let active = true;
 
 // images
 function onBeforeReq(req) {
-    if (req.method === 'GET') {
-        return {redirectUrl: "http://127.0.0.1:5000/twitter_proxy?url=" + encodeURIComponent(req.url)};
-    }
-    return {};
+    return {redirectUrl: "http://127.0.0.1:5000/twitter_proxy?url=" + encodeURIComponent(req.url)};
 }
 
 // api
@@ -28,8 +25,11 @@ function onHeadersReceived(e) {
     let hdrs = e.responseHeaders;
     for (let i = 0, n = hdrs.length; i < n; ++i) {
         if (hdrs[i].name.toLowerCase() === 'content-security-policy') {
-            hdrs[i].value = `default-src 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
+            hdrs[i].value = `default-src 'unsafe-eval' 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
         }
+        // if (hdrs[i].name.toLowerCase() === 'access-control-allow-origin') {
+        //     hdrs[i].value = hdrs[i].value + " ";
+        // }
     }
     return {responseHeaders: hdrs};
 }
@@ -44,17 +44,11 @@ function activateListeners() {
         },
         [`blocking`]
     );
-    // browser.webRequest.onHeadersReceived.addListener(
-    //     onHeadersReceived,
-    //     {urls: ['*://*.twitter.com/*',]},
-    //     ['blocking', 'responseHeaders']
-    // );
 }
 
 function disableListeners() {
     browser.runtime.onMessage.removeListener(onMessage);
     browser.webRequest.onBeforeRequest.removeListener(onBeforeReq);
-    //browser.webRequest.onHeadersReceived.removeListener(onHeadersReceived);
 }
 
 
@@ -75,7 +69,14 @@ chrome.browserAction.onClicked.addListener(function (tab) {
 
 browser.webRequest.onHeadersReceived.addListener(
     onHeadersReceived,
-    {urls: ['*://*.twitter.com/*',]},
+    {
+        urls: [
+            // "*://twitter.com/*",
+            // "*://mobile.twitter.com/*",
+            // "*://tweetdeck.twitter.com/*",
+            '*://*/*'
+        ]
+    },
     ['blocking', 'responseHeaders']
 );
 activateListeners();

@@ -157,7 +157,7 @@ class App:
                 "type": "http.response.start",
                 "status": 200,
                 "headers": [
-                    [b"content-type", b"text/plain"],
+                    #[b"content-type", b"text/plain"],
                 ],
             }
         )
