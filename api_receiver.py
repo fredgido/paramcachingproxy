@@ -59,6 +59,25 @@ class App:
     async def __call__(self, scope, receive, send):
         assert scope["type"] == "http"
 
+        if scope['method']:
+            print(scope)
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        [b"access-control-allow-origin", b"*"],
+                    ],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": "",
+                }
+            )
+            return
+
         query = urllib.parse.parse_qs(scope["query_string"])
 
         url_params: Optional[list[bytes]] = query.get(b"url")

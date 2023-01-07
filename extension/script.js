@@ -37,12 +37,62 @@ function videoHandler(info) {
 */
 
 
-const onHeadersReceived = function (details) {
-    for (let i = 0; i < details.responseHeaders.length; i++) {
-        if (details.responseHeaders[i].name.toLowerCase() === 'content-security-policy') {
-            details.responseHeaders[i].value = `default-src 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
+// const onHeadersReceived = function (details) {
+//     for (let i = 0; i < details.responseHeaders.length; i++) {
+//         if (details.responseHeaders[i].name.toLowerCase() === 'content-security-policy') {
+//             details.responseHeaders[i].value = `default-src 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
+//         }
+//     }
+//     return {
+//         responseHeaders: details.responseHeaders
+//     };
+// };
+
+
+function addOrReplaceHeader(responseHeaders, newHeaders) {
+    newHeaders.forEach(function (header) {
+        let headerPosition = responseHeaders.findIndex(x => x.name.toLowerCase() === header.name.toLowerCase());
+        if (headerPosition > -1) {
+            responseHeaders[headerPosition] = header;
+        } else {
+            responseHeaders.push(header);
         }
-    }
+    }, this);
+}
+
+const onHeadersReceived = function (details) {
+    let crossDomainHeaders = [
+        {
+            name: "access-control-allow-origin",
+            value: "*"
+        },
+        {
+            name: "access-control-allow-methods",
+            value: "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
+        },
+        {
+            name: "access-control-allow-headers",
+            value: "*"
+        },
+        {
+            name: "access-control-expose-headers",
+            value: "*"
+        },
+        {
+            name: "content-security-policy",
+            value: "default-src 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:"
+        }
+    ];
+
+    console.log(details.responseHeaders)
+    console.log(JSON.stringify(details.responseHeaders))
+    console.log(details)
+
+    addOrReplaceHeader(details.responseHeaders, crossDomainHeaders);
+    console.log(details.responseHeaders)
+    console.log(JSON.stringify(details.responseHeaders))
+    console.log(details)
+
     return {
         responseHeaders: details.responseHeaders
     };
