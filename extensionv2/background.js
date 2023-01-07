@@ -4,6 +4,7 @@ if (!globalThis.hasOwnProperty('browser')) {
     globalThis.browser = globalThis.chrome;
 }
 
+let active = true;
 
 // images
 function onBeforeReq(req) {
@@ -13,30 +14,15 @@ function onBeforeReq(req) {
     return {};
 }
 
-browser.webRequest.onBeforeRequest.addListener(
-    onBeforeReq,
-    {
-        urls: ['*://pbs.twimg.com/media/*', '*://video.twimg.com/tweet_video/*'],
-    },
-    [`blocking`]
-);
-
 // api
 function onMessage(request, sender, sendResponse) {
-    console.log(`A content script sent a message: ${JSON.stringify(request)}`);
-
     fetch('http://localhost:1024/notify?url=' + encodeURIComponent(request.detail.url), {
         method: 'post',
         body: request.detail.body,
     });
 }
 
-browser.runtime.onMessage.addListener(onMessage);
-
-
 // headers
-
-
 function onHeadersReceived(e) {
     let hdrs = e.responseHeaders;
 
@@ -50,10 +36,41 @@ function onHeadersReceived(e) {
 }
 
 
-browser.webRequest.onHeadersReceived.addListener(
-    onHeadersReceived,
-    {urls: ['*://*.twitter.com/*',]},
-    ['blocking', 'responseHeaders']
-);
+function activateListeners() {
+    browser.runtime.onMessage.addListener(onMessage);
+    browser.webRequest.onHeadersReceived.addListener(
+        onHeadersReceived,
+        {urls: ['*://*.twitter.com/*',]},
+        ['blocking', 'responseHeaders']
+    );
+    browser.webRequest.onHeadersReceived.addListener(
+        onHeadersReceived,
+        {urls: ['*://*.twitter.com/*',]},
+        ['blocking', 'responseHeaders']
+    );
+}
 
 
+function disableListeners() {
+    browser.runtime.onMessage.removeListener(onMessage);
+    browser.webRequest.onHeadersReceived.removeListener(onHeadersReceived);
+    browser.webRequest.onHeadersReceived.removeListener(onHeadersReceived);
+}
+
+
+chrome.browserAction.onClicked.addListener(function (tab) {
+    if (active) {
+        active = false;
+        disableListeners();
+        console.log("deactivated");
+        chrome.browserAction.setIcon({path: "32_off.png"});
+    } else {
+        active = true;
+        activateListeners();
+        console.log("activated");
+        chrome.browserAction.setIcon({path: "32.png"});
+    }
+});
+
+
+activateListeners();
