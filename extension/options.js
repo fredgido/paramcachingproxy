@@ -9,7 +9,7 @@ async function saveOptions(e) {
     e.preventDefault();
     let proxyUrl = document.getElementById('proxyUrl').value;
     let apiUrl = document.getElementById('apiUrl').value;
-    let originalProxyEnabled = document.getElementById('originalProxyEnabled').value;
+    let originalProxyEnabled = document.getElementById('originalProxyEnabled').checked;
     browser.storage.local.set({
         proxyUrl: proxyUrl || settingsDefaults.proxyUrl,
         apiUrl: apiUrl || settingsDefaults.apiUrl,
@@ -23,7 +23,7 @@ async function restoreOptions() {
     browser.storage.local.get(settingsDefaults, function (items) {
         document.getElementById('proxyUrl').value = items.proxyUrl || settingsDefaults.proxyUrl;
         document.getElementById('apiUrl').value = items.apiUrl || settingsDefaults.apiUrl;
-        document.getElementById('originalProxyEnabled').value = items.originalProxyEnabled;
+        document.getElementById('originalProxyEnabled').checked = items.originalProxyEnabled;
     });
 }
 
