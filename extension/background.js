@@ -52,13 +52,12 @@ function onMessage(request, sender, sendResponse) {
 
 // headers
 function onHeadersReceived(e) {
-    let hdrs = e.responseHeaders;
-    for (let i = 0, n = hdrs.length; i < n; ++i) {
-        if (hdrs[i].name.toLowerCase() === 'content-security-policy') {
-            hdrs[i].value = `default-src 'unsafe-eval' 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
+    for (let i = 0, n = e.responseHeaders.length; i < n; ++i) {
+        if (e.responseHeaders[i].name.toLowerCase() === 'content-security-policy') {
+            e.responseHeaders[i].value = `default-src 'unsafe-eval' 'unsafe-inline' * blob: data: filesystem: javascript: mediastream:`;
         }
     }
-    return {responseHeaders: hdrs};
+    return {responseHeaders: e.responseHeaders}
 }
 
 
