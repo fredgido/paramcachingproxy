@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+</head>
+<body>
+<form id="settings">
+    <fieldset>
+        <legend>Image proxy URL:</legend>
+        <input type="url" id="proxyUrl" size="50"/>
+        <p>Leave field empty if unsure.</p>
+    </fieldset>
+    <fieldset>
+        <legend>API save URL:</legend>
+        <input type="url" id="apiUrl" size="50"/>
+        <p>Leave field empty if unsure.</p>
+    </fieldset>
+    <legend>Proxy original images:</legend>
+    <label><input type="checkbox" name="originalProxyEnabled" id="originalProxyEnabled"
+                  value="false">Enabled</label><br/>
+    </fieldset>
+    <button type="submit">Save</button>
+</form>
+<script type="module" src="options.js"></script>
+</body>
+</html>
