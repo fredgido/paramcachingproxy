@@ -122,7 +122,7 @@ class App:
         return await self.return_text(connection, b"OK", 200)
 
     @staticmethod
-    async def return_text(connection: Connection, error_message: bytes, status_code: int = 200):
+    async def return_text(connection: Connection, message: bytes, status_code: int = 200):
         await connection.send(
             {
                 "type": "http.response.start",
@@ -135,7 +135,7 @@ class App:
         await connection.send(
             {
                 "type": "http.response.body",
-                "body": error_message,
+                "body": message,
             }
         )
         return
@@ -144,7 +144,8 @@ class App:
 if __name__ == "__main__":
     uvicorn.run(
         "api_receiver:App",
-        port=1024,
+        host="0.0.0.0",
+        port=7021,
         log_level="info",
         # log_level="critical",
         loop="uvloop",

@@ -8,12 +8,14 @@ let active = true;
 
 // images
 function onBeforeReq(req) {
-    return {redirectUrl: "http://127.0.0.1:5000/twitter_proxy?url=" + encodeURIComponent(req.url)};
+    //return {redirectUrl: "http://localhost:7020/twitter_proxy?url=" + encodeURIComponent(req.url)};
+    fetch('http://localhost:7020/twitter_downloader?url=' + encodeURIComponent('https://pbs.twimg.com/media/FlPx4_6aAAAr6Mx?format=jpg&name=900x900'), {mode: 'no-cors'})
+    return req
 }
 
 // api
 function onMessage(request, sender, sendResponse) {
-    fetch('http://localhost:1024/notify?url=' + encodeURIComponent(request.detail.url), {
+    fetch('http://localhost:7021/notify?url=' + encodeURIComponent(request.detail.url), {
         method: 'post',
         body: request.detail.body,
         mode: 'no-cors',
