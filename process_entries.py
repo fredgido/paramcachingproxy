@@ -450,7 +450,7 @@ def extract_tweet_data(entry):
     return tweet
 
 
-def extract_assets_data(entry) -> list[dict]:
+def extract_assets_data(entry, tweet_id=None) -> list[dict]:
     media = list[dict]()
     for asset in entry["extended_entities"]["media"]:
         subdomain, url_type, name, extension = twitter_url_to_orig(asset["media_url_https"])
@@ -461,7 +461,7 @@ def extract_assets_data(entry) -> list[dict]:
             "url": asset["media_url_https"],
             "width": asset["original_info"]["width"],
             "height": asset["original_info"]["height"],
-            "post_id": asset["source_status_id_str"],
+            "post_id": asset.get("source_status_id_str") or tweet_id,
             "name": name,
             "extension": extension,
             "ext_alt_text": asset["ext_alt_text"]
@@ -481,10 +481,9 @@ def extract_users_data(entry) -> list[dict]:
             "screen_name": entry["user"]["screen_name"],
             "location": entry["user"]["location"],
             "description": entry["user"]["description"],
-            "location": entry["user"]["location"],
             "urls": (
-                    [u["expanded_url"] for u in entry["user"]["entities"]["url"]["urls"]]
-                    + [u["expanded_url"] for u in entry["user"]["entities"]["description"]["urls"]]
+                [u["expanded_url"] for u in entry["user"]["entities"]["url"]["urls"]]
+                + [u["expanded_url"] for u in entry["user"]["entities"]["description"]["urls"]]
             ),
             "protected": entry["user"]["protected"],
             "followers_count": entry["user"]["followers_count"],
@@ -506,19 +505,29 @@ if __name__ == "__main__":
     print(data)
 
     tweets = dict[int:dict]()
-    assets = dict[tuple[str, str]: dict]()
+    assets = dict[tuple[str, str] : dict]()
     users = dict[int:dict]()
 
     for tweet_entry in data:
         tweet_entry: APIOnedotOneHomeEntry
         tweet = extract_tweet_data(tweet_entry)
         tweets[int(tweet["id"])] = tweet
-        assets_data = extract_assets_data(tweet_entry)
+        assets_data = extract_assets_data(tweet_entry, int(tweet["id"]))
         for asset_data in assets_data:
             assets[(asset_data["name"], asset_data["extension"])] = asset_data
         users_data = extract_users_data(tweet_entry)
         for user_data in users_data:
             users[int(user_data["id"])] = users_data
+
+        if tweet_entry["retweeted_status"]:
+            retweet = extract_tweet_data(tweet_entry["retweeted_status"])
+            tweets[int(retweet["id"])] = retweet
+            retweet_assets_data = extract_assets_data(tweet_entry["retweeted_status"], int(retweet["id"]))
+            for retweet_asset_data in retweet_assets_data:
+                assets[(retweet_asset_data["name"], retweet_asset_data["extension"])] = retweet_asset_data
+            users_data = extract_users_data(tweet_entry["retweeted_status"])
+            for user_data in users_data:
+                users[int(user_data["id"])] = users_data
     print(tweets)
     print(assets)
     print(users)
