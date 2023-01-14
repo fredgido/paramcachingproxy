@@ -4,6 +4,7 @@ import orjson
 from dateutil.parser import parse
 
 from asgi import twitter_url_to_orig
+from db import user_insert_vars, user_insert_statement
 
 APIOnedotOneHomeEntry = TypedDict(
     "APIOnedotOneHomeEntry",
@@ -475,7 +476,7 @@ def extract_users_data(entry) -> list[dict]:
     users = list[dict]()
     users.append(
         {
-            "id": entry["user"]["id_str"],
+            "id": int(entry["user"]["id_str"]),
             "created_at": parse(entry["user"]["created_at"]),
             "name": entry["user"]["name"],
             "screen_name": entry["user"]["screen_name"],
@@ -499,35 +500,66 @@ def extract_users_data(entry) -> list[dict]:
     return users
 
 
-if __name__ == "__main__":
-    data = orjson.loads(open("temp/2853971.json", "rb").read())
+def process_data(api_data):
+    tweets_parsed = dict[int:dict]()
+    assets_parsed = dict[tuple[str, str] : dict]()
+    users_parsed = dict[int:dict]()
 
-    print(data)
-
-    tweets = dict[int:dict]()
-    assets = dict[tuple[str, str] : dict]()
-    users = dict[int:dict]()
-
-    for tweet_entry in data:
+    for tweet_entry in api_data:
         tweet_entry: APIOnedotOneHomeEntry
         tweet = extract_tweet_data(tweet_entry)
-        tweets[int(tweet["id"])] = tweet
+        tweets_parsed[int(tweet["id"])] = tweet
         assets_data = extract_assets_data(tweet_entry, int(tweet["id"]))
         for asset_data in assets_data:
-            assets[(asset_data["name"], asset_data["extension"])] = asset_data
+            assets_parsed[(asset_data["name"], asset_data["extension"])] = asset_data
         users_data = extract_users_data(tweet_entry)
         for user_data in users_data:
-            users[int(user_data["id"])] = users_data
+            users_parsed[int(user_data["id"])] = user_data
 
         if tweet_entry["retweeted_status"]:
             retweet = extract_tweet_data(tweet_entry["retweeted_status"])
-            tweets[int(retweet["id"])] = retweet
+            tweets_parsed[int(retweet["id"])] = retweet
             retweet_assets_data = extract_assets_data(tweet_entry["retweeted_status"], int(retweet["id"]))
             for retweet_asset_data in retweet_assets_data:
-                assets[(retweet_asset_data["name"], retweet_asset_data["extension"])] = retweet_asset_data
+                assets_parsed[(retweet_asset_data["name"], retweet_asset_data["extension"])] = retweet_asset_data
             users_data = extract_users_data(tweet_entry["retweeted_status"])
             for user_data in users_data:
-                users[int(user_data["id"])] = users_data
-    print(tweets)
-    print(assets)
-    print(users)
+                users_parsed[int(user_data["id"])] = user_data
+    return tweets_parsed,assets_parsed,users_parsed
+
+import asyncio
+import datetime
+import json
+
+import asyncpg
+from asyncpg import Connection
+
+from pg_connection_creds import connection_creds
+
+async def run():
+    db_con: Connection = await asyncpg.connect(**connection_creds)
+
+
+    # statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
+    # values = await db_con.executemany(statement, [("localhost", b"B", datetime.datetime.utcnow())])
+    # print(values)
+
+
+    get_statement = """SELECT id, url, "data", created_at, processed_at FROM public.api_dump where id = 2853971 order by id asc limit 100000"""
+
+    api_dump_id, url, data, created_at, processed_at = (await db_con.fetch(get_statement))[0]
+    tweets,assets,users= process_data(orjson.loads(data))
+
+    for user in users.values():
+        user["processed_at"] = created_at
+        values = await db_con.fetch(
+            user_insert_statement,
+            *[user[var] for var in user_insert_vars]
+        )
+
+    await db_con.close()
+
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(run())

@@ -16,7 +16,7 @@ create table public.user (
 	screen_name text not null,
 	location text not null,
 	description text not null,
-	url text[] not null,
+	urls text[] not null,
 	protected bool not null,
 	followers_count integer null,
 	friends_count integer null,
@@ -28,7 +28,6 @@ create table public.user (
 	processed_at timestamptz null
 );
 """
-
 
 
 """
@@ -44,7 +43,6 @@ create table public.asset (
 	processed_at timestamptz null
 );
 """
-
 
 
 """
@@ -65,3 +63,48 @@ create table public.post (
 	is_retweet  bool not null
 );
 """
+
+
+user_insert_vars = (
+    "id",
+    "created_at",
+    "name",
+    "screen_name",
+    "location",
+    "description",
+    "urls",
+    "protected",
+    "followers_count",
+    "friends_count",
+    "listed_count",
+    "statuses_count",
+    "media_count",
+    "profile_image_url_https",
+    "profile_banner_url",
+    "processed_at",
+)
+user_insert_statement = """
+INSERT INTO public.user (
+"id", "created_at","name","screen_name","location","description","urls","protected",
+"followers_count","friends_count","listed_count","statuses_count","media_count",
+"profile_image_url_https","profile_banner_url","processed_at"
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+ON CONFLICT (id) 
+DO UPDATE SET
+"created_at" = EXCLUDED."created_at",
+"name" = EXCLUDED."name",
+"screen_name" = EXCLUDED."screen_name",
+"location" = EXCLUDED."location",
+"description" = EXCLUDED."description",
+"urls" = EXCLUDED."urls",
+"protected" = EXCLUDED."protected",
+"followers_count" = EXCLUDED."followers_count",
+"friends_count" = EXCLUDED."friends_count",
+"listed_count" = EXCLUDED."listed_count",
+"statuses_count" = EXCLUDED."statuses_count",
+"media_count" = EXCLUDED."media_count",
+"profile_image_url_https" = EXCLUDED."profile_image_url_https",
+"profile_banner_url" = EXCLUDED."profile_banner_url",
+"processed_at" = EXCLUDED."processed_at"
+;"""
