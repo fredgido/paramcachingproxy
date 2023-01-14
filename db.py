@@ -8,6 +8,19 @@ create table public.api_dump (
 );
 """
 
+
+def insert_statement_generator(fields: list[str], table: str, exclude_update=None):
+    if exclude_update is None:
+        exclude_update = []
+    return f"""
+INSERT INTO public.{table} ({",".join(f'"{var}"' for var in  fields)})
+VALUES ({",".join(f"${i+1}" for i, var in  enumerate(fields))})
+ON CONFLICT (id) 
+DO UPDATE SET
+{",".join(f'"{var}" = EXCLUDED."{var}"' for var in  fields[1:] if var not in exclude_update)}
+;"""
+
+
 """
 create table public.user (
 	id bigint primary key,
@@ -30,6 +43,27 @@ create table public.user (
 """
 
 
+user_vars = [
+    "id",
+    "created_at",
+    "name",
+    "screen_name",
+    "location",
+    "description",
+    "urls",
+    "protected",
+    "followers_count",
+    "friends_count",
+    "listed_count",
+    "statuses_count",
+    "media_count",
+    "profile_image_url_https",
+    "profile_banner_url",
+    "processed_at",
+]
+user_insert_statement = insert_statement_generator(user_vars, "user")
+
+
 """
 create table public.asset (
 	id bigint primary key,
@@ -39,10 +73,25 @@ create table public.asset (
 	height smallint not null,
 	name text not null,
 	extension text not null,
-	ext_alt_text text not null,
+	ext_alt_text text null,
+	file_header_date timestamptz null,
 	processed_at timestamptz null
 );
 """
+
+asset_vars = [
+    "id",
+    "post_id",
+    "url",
+    "width",
+    "height",
+    "name",
+    "extension",
+    "ext_alt_text",
+    "file_header_date",
+    "processed_at",
+]
+asset_insert_statement = insert_statement_generator(asset_vars, "asset", ["file_header_date"])
 
 
 """
@@ -64,47 +113,20 @@ create table public.post (
 );
 """
 
-
-user_insert_vars = (
+post_vars = [
     "id",
-    "created_at",
-    "name",
-    "screen_name",
-    "location",
-    "description",
+    "full_text",
+    "language",
+    "retweet_count",
+    "favorite_count",
+    "reply_count",
+    "is_quote_status",
+    "views",
+    "conversation_id",
+    "hashtags",
+    "symbols",
+    "user_mentions",
     "urls",
-    "protected",
-    "followers_count",
-    "friends_count",
-    "listed_count",
-    "statuses_count",
-    "media_count",
-    "profile_image_url_https",
-    "profile_banner_url",
-    "processed_at",
-)
-user_insert_statement = """
-INSERT INTO public.user (
-"id", "created_at","name","screen_name","location","description","urls","protected",
-"followers_count","friends_count","listed_count","statuses_count","media_count",
-"profile_image_url_https","profile_banner_url","processed_at"
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-ON CONFLICT (id) 
-DO UPDATE SET
-"created_at" = EXCLUDED."created_at",
-"name" = EXCLUDED."name",
-"screen_name" = EXCLUDED."screen_name",
-"location" = EXCLUDED."location",
-"description" = EXCLUDED."description",
-"urls" = EXCLUDED."urls",
-"protected" = EXCLUDED."protected",
-"followers_count" = EXCLUDED."followers_count",
-"friends_count" = EXCLUDED."friends_count",
-"listed_count" = EXCLUDED."listed_count",
-"statuses_count" = EXCLUDED."statuses_count",
-"media_count" = EXCLUDED."media_count",
-"profile_image_url_https" = EXCLUDED."profile_image_url_https",
-"profile_banner_url" = EXCLUDED."profile_banner_url",
-"processed_at" = EXCLUDED."processed_at"
-;"""
+    "is_retweet",
+]
+post_insert_statement = insert_statement_generator(post_vars, "post", ["file_header_date"])
