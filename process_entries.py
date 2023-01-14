@@ -144,11 +144,12 @@ async def run():
         tweet["processed_at"] = created_at
         tweet["file_header_date"] = None
 
-    values = await db_con.executemany(
-        post_insert_statement, [[tweet[var] for var in post_vars] for tweet in tweets.values()]
-    )
+    for tweet in tweets.values():
+        try:
+            values = await db_con.execute(post_insert_statement, *[tweet[var] for var in post_vars])
+        except Exception as e:
+            print(values)
     print(values)
-
     await db_con.close()
 
 
