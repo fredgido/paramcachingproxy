@@ -38,6 +38,7 @@ create table public.user (
 	media_count integer null,
 	profile_image_url_https text null,
 	profile_banner_url text null,
+	profile_background_image_url_https text null,
 	processed_at timestamptz null
 );
 """

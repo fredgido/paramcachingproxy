@@ -22,10 +22,10 @@ def extract_tweet_data(entry):
         is_quote_status=entry["is_quote_status"],
         views=None,
         conversation_id=int(entry["conversation_id_str"]) if entry["conversation_id_str"] else None,
-        hashtags=entry["entities"]["hashtags"],
+        hashtags=[hashtag["text"] for hashtag in entry["entities"]["hashtags"]],
         symbols=entry["entities"]["symbols"],
         user_mentions=[int(mention["id_str"]) for mention in entry["entities"]["user_mentions"]],
-        urls=entry["entities"]["urls"],
+        urls=[url["expanded_url"] for url in entry["entities"]["urls"]],
         is_retweet=bool(entry.get("retweeted_status")),
     )
     return tweet
@@ -33,6 +33,8 @@ def extract_tweet_data(entry):
 
 def extract_assets_data(entry, tweet_id=None) -> list[dict]:
     media = list[dict]()
+    if "extended_entities" not in entry:
+        return media
     for asset in entry["extended_entities"]["media"]:
         subdomain, url_type, name, extension = twitter_url_to_orig(asset["media_url_https"])
         if not name:
@@ -63,8 +65,8 @@ def extract_users_data(entry) -> list[dict]:
             "location": entry["user"]["location"],
             "description": entry["user"]["description"],
             "urls": (
-                    [u["expanded_url"] for u in entry["user"]["entities"]["url"]["urls"]]
-                    + [u["expanded_url"] for u in entry["user"]["entities"]["description"]["urls"]]
+                [u["expanded_url"] for u in entry["user"]["entities"].get("url", {}).get("urls", [])]
+                + [u["expanded_url"] for u in entry["user"]["entities"]["description"]["urls"]]
             ),
             "protected": entry["user"]["protected"],
             "followers_count": entry["user"]["followers_count"],
@@ -73,7 +75,8 @@ def extract_users_data(entry) -> list[dict]:
             "statuses_count": entry["user"]["statuses_count"],
             "media_count": entry["user"]["media_count"],
             "profile_image_url_https": entry["user"]["profile_image_url_https"],
-            "profile_banner_url": entry["user"]["profile_banner_url"],
+            "profile_banner_url": entry["user"].get("profile_banner_url"),
+            "profile_background_image_url_https": entry["user"].get("profile_background_image_url_https"),
             # datetime nullable from file request
         }
     )
@@ -82,7 +85,7 @@ def extract_users_data(entry) -> list[dict]:
 
 def process_data(api_data):
     tweets_parsed = dict[int:dict]()
-    assets_parsed = dict[tuple[str, str]: dict]()
+    assets_parsed = dict[tuple[str, str] : dict]()
     users_parsed = dict[int:dict]()
 
     for tweet_entry in api_data:
@@ -96,7 +99,7 @@ def process_data(api_data):
         for user_data in users_data:
             users_parsed[int(user_data["id"])] = user_data
 
-        if tweet_entry["retweeted_status"]:
+        if tweet_entry.get("retweeted_status"):
             retweet = extract_tweet_data(tweet_entry["retweeted_status"])
             tweets_parsed[int(retweet["id"])] = retweet
             retweet_assets_data = extract_assets_data(tweet_entry["retweeted_status"], int(retweet["id"]))
@@ -110,14 +113,14 @@ def process_data(api_data):
 
 async def run():
     db_con: Connection = await asyncpg.connect(**connection_creds)
-
-    # statement = """INSERT INTO public.api_dump (url, "data",created_at) VALUES($1, $2, $3);"""
-    # values = await db_con.executemany(statement, [("localhost", b"B", datetime.datetime.utcnow())])
-    # print(values)
-
-    get_statement = """SELECT id, url, "data", created_at, processed_at FROM public.api_dump where id = 2853971 order by id asc limit 100000"""
+    get_statement = """
+    SELECT id, url, "data", created_at, processed_at
+    FROM public.api_dump
+    where url like 'https://api.twitter.com/1.1/statuses/home_timeline.json%' and processed_at is null
+    order by id asc limit 10"""
 
     api_dump_id, url, data, created_at, processed_at = (await db_con.fetch(get_statement))[0]
+    print(url)
     tweets, assets, users = process_data(orjson.loads(data))
 
     for user in users.values():
