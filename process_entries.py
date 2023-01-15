@@ -31,6 +31,7 @@ def extract_tweet_data(entry):
     )
     return tweet
 
+
 twitter_video_url_regex_str = r"(?P<subdomain>[^.\/]*)\.twimg\.com\/(?P<type>ext_tw_video|amplify_video)/(?P<id>[\d]*)/(?P<pu>pu/)?vid/(?P<resolution>[x\d]*)/(?P<name>[a-zA-Z\d_-]*)(?:\?format=|\.)(?P<extension>[a-zA-Z0-9]{3,4})"
 twitter_url_regex = re.compile(twitter_video_url_regex_str)
 
@@ -41,9 +42,16 @@ def twitter_video_url_to_orig(twitter_url: str):
         return None, None, None, None, None
 
     capture_groups = match.groupdict()
-    return capture_groups["subdomain"], capture_groups["type"], capture_groups["name"], capture_groups["extension"], capture_groups["resolution"]
+    return (
+        capture_groups["subdomain"],
+        capture_groups["type"],
+        capture_groups["name"],
+        capture_groups["extension"],
+        capture_groups["resolution"],
+    )
 
-def extract_assets_data(entry, tweet_id:int) -> list[dict]:
+
+def extract_assets_data(entry, tweet_id: int) -> list[dict]:
     media = list[dict]()
     if "extended_entities" not in entry:
         return media
@@ -157,36 +165,40 @@ async def run():
     where url like 'https://api.twitter.com/1.1/statuses/home_timeline.json%' and processed_at is null
     order by id asc limit 10000"""
 
-    for row in (await db_con.fetch(get_statement)):
+    insert_tweets = dict()
+    insert_assets = dict()
+    insert_users = dict()
+    row_ids = list()
+
+    for row in await db_con.fetch(get_statement):
         api_dump_id, url, data, created_at, processed_at = row
-        print(url)
+        row_ids.append(api_dump_id)
         tweets, assets, users = process_data(orjson.loads(data))
 
         for user in users.values():
             user["processed_at"] = created_at
-
-        values = await db_con.executemany(
-            user_insert_statement, [[user[var] for var in user_vars] for user in users.values()]
-        )
-        print(values)
-
         for asset in assets.values():
             asset["processed_at"] = created_at
             asset["file_header_date"] = None
-
-        values = await db_con.executemany(
-            asset_insert_statement, [[asset[var] for var in asset_vars] for asset in assets.values()]
-        )
-        print(values)
-
         for tweet in tweets.values():
             tweet["processed_at"] = created_at
-            tweet["file_header_date"] = None
 
-        values = await db_con.executemany(
-            post_insert_statement, [[tweet[var] for var in post_vars] for tweet in tweets.values()]
-        )
-        print(values)
+        insert_tweets.update(tweets)
+        insert_assets.update(assets)
+        insert_users.update(users)
+
+    values = await db_con.executemany(
+        post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
+    )
+    print(values)
+    values = await db_con.executemany(
+        asset_insert_statement, [[asset[var] for var in asset_vars] for asset in insert_assets.values()]
+    )
+    print(values)
+    values = await db_con.executemany(
+        user_insert_statement, [[user[var] for var in user_vars] for user in insert_users.values()]
+    )
+    print(values)
 
     await db_con.close()
 
