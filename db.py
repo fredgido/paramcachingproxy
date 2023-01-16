@@ -98,6 +98,7 @@ asset_insert_statement = insert_statement_generator(asset_vars, "asset", ["file_
 """
 create table public.post (
 	id bigint primary key,
+	user_id bigint not null,
 	full_text text not null,
 	language text not null,
 	retweet_count int not null,
@@ -116,6 +117,7 @@ create table public.post (
 
 post_vars = [
     "id",
+    "user_id",
     "full_text",
     "language",
     "retweet_count",
@@ -129,5 +131,6 @@ post_vars = [
     "user_mentions",
     "urls",
     "is_retweet",
+    "processed_at",
 ]
 post_insert_statement = insert_statement_generator(post_vars, "post", ["file_header_date"])

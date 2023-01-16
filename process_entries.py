@@ -15,6 +15,7 @@ from process_entries_typing import APIOnedotOneHomeEntry
 def extract_tweet_data(entry):
     tweet = dict(
         id=int(entry["id_str"]),
+        user_id=int(entry["user"]["id_str"]),
         full_text=entry["full_text"],
         language=entry["lang"],
         retweet_count=entry["retweet_count"],
