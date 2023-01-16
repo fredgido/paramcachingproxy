@@ -134,3 +134,20 @@ post_vars = [
     "processed_at",
 ]
 post_insert_statement = insert_statement_generator(post_vars, "post", ["file_header_date"])
+
+# def insert_statement_generator(fields_updated: list[str], table: str, condition_list_dict,extra_condition=""):
+#     quotes= "\""
+#     return f"""
+# UPDATE {table}
+# SET {",".join(f"{quotes}{field}{quotes} = ${i+1}" for i, field in  enumerate(fields_updated))}
+# WHERE {" AND ".join(f"{quotes}{field}{quotes} {operator} {value}" for i, (field, (operator,value)) in  enumerate(sorted(condition_list_dict.items(),key=lambda x:x[1] is None)))}
+# {"AND" if extra_condition and condition_list_dict else ""} {extra_condition};
+# """
+#
+# print(insert_statement_generator(["processed_at"],"post",{"id":(" in ", "(1,2)")}))
+
+
+api_dump_update_processed = """
+UPDATE public.api_dump
+SET "processed_at" = $2
+WHERE "id" = any($1::int[]) ;"""

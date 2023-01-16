@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import re
 
 import asyncpg
@@ -7,7 +8,15 @@ from asyncpg import Connection
 from dateutil.parser import parse
 
 from asgi import twitter_url_to_orig
-from db import user_insert_statement, user_vars, asset_vars, asset_insert_statement, post_insert_statement, post_vars
+from db import (
+    user_insert_statement,
+    user_vars,
+    asset_vars,
+    asset_insert_statement,
+    post_insert_statement,
+    post_vars,
+    api_dump_update_processed,
+)
 from pg_connection_creds import connection_creds
 from process_entries_typing import APIOnedotOneHomeEntry
 
@@ -25,7 +34,7 @@ def extract_tweet_data(entry):
         views=None,
         conversation_id=int(entry["conversation_id_str"]) if entry["conversation_id_str"] else None,
         hashtags=[hashtag["text"] for hashtag in entry["entities"]["hashtags"]],
-        symbols=entry["entities"]["symbols"],
+        symbols=[symbol["text"] for symbol in entry["entities"]["symbols"]],
         user_mentions=[int(mention["id_str"]) for mention in entry["entities"]["user_mentions"]],
         urls=[url["expanded_url"] for url in entry["entities"]["urls"]],
         is_retweet=bool(entry.get("retweeted_status")),
@@ -57,16 +66,22 @@ def extract_assets_data(entry, tweet_id: int) -> list[dict]:
     if "extended_entities" not in entry:
         return media
     for asset in entry["extended_entities"]["media"]:
-        if asset["type"] == "image":
+        if asset["type"] in ("photo", "animated_gif"):
             subdomain, url_type, name, extension = twitter_url_to_orig(asset["media_url_https"])
             if not name:
                 raise Exception("no name")
+            if not asset.get("source_status_id_str"):
+                post_id_from_url = int(asset["expanded_url"].split("/")[5])
+                if post_id_from_url != tweet_id:
+                    raise Exception("Different id")
+            else:
+                tweet_id = int(asset["source_status_id_str"])
             media_asset = {
                 "id": int(asset["id_str"]),
                 "url": asset["media_url_https"],
                 "width": asset["original_info"]["width"],
                 "height": asset["original_info"]["height"],
-                "post_id": int(asset.get("source_status_id_str")) or tweet_id,
+                "post_id": tweet_id,
                 "name": name,
                 "extension": extension,
                 "ext_alt_text": asset["ext_alt_text"]
@@ -98,6 +113,8 @@ def extract_assets_data(entry, tweet_id: int) -> list[dict]:
                 # datetime nullable from file request
             }
             media.append(media_asset)
+        else:
+            print(asset["type"])
     return media
 
 
@@ -135,6 +152,9 @@ def process_data(api_data):
     assets_parsed = dict[tuple[str, str] : dict]()
     users_parsed = dict[int:dict]()
 
+    if "errors" in api_data:
+        return {}, {}, {}
+
     for tweet_entry in api_data:
         tweet_entry: APIOnedotOneHomeEntry
         tweet = extract_tweet_data(tweet_entry)
@@ -160,47 +180,57 @@ def process_data(api_data):
 
 async def run():
     db_con: Connection = await asyncpg.connect(**connection_creds)
+
     get_statement = """
     SELECT id, url, "data", created_at, processed_at
     FROM public.api_dump
     where url like 'https://api.twitter.com/1.1/statuses/home_timeline.json%' and processed_at is null
     order by id asc limit 10000"""
 
-    insert_tweets = dict()
-    insert_assets = dict()
-    insert_users = dict()
-    row_ids = list()
+    for i in range(10000):
+        insert_tweets = dict()
+        insert_assets = dict()
+        insert_users = dict()
+        row_ids = list()
 
-    for row in await db_con.fetch(get_statement):
-        api_dump_id, url, data, created_at, processed_at = row
-        row_ids.append(api_dump_id)
-        tweets, assets, users = process_data(orjson.loads(data))
+        rows = await db_con.fetch(get_statement)
+        if not rows:
+            break
 
-        for user in users.values():
-            user["processed_at"] = created_at
-        for asset in assets.values():
-            asset["processed_at"] = created_at
-            asset["file_header_date"] = None
-        for tweet in tweets.values():
-            tweet["processed_at"] = created_at
+        for row in rows:
+            api_dump_id, url, data, created_at, processed_at = row
+            row_ids.append(api_dump_id)
+            tweets, assets, users = process_data(orjson.loads(data))
 
-        insert_tweets.update(tweets)
-        insert_assets.update(assets)
-        insert_users.update(users)
+            for user in users.values():
+                user["processed_at"] = created_at
+            for asset in assets.values():
+                asset["processed_at"] = created_at
+                asset["file_header_date"] = None
+            for tweet in tweets.values():
+                tweet["processed_at"] = created_at
 
-    values = await db_con.executemany(
-        post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
-    )
-    print(values)
-    values = await db_con.executemany(
-        asset_insert_statement, [[asset[var] for var in asset_vars] for asset in insert_assets.values()]
-    )
-    print(values)
-    values = await db_con.executemany(
-        user_insert_statement, [[user[var] for var in user_vars] for user in insert_users.values()]
-    )
-    print(values)
+            insert_tweets.update(tweets)
+            insert_assets.update(assets)
+            insert_users.update(users)
 
+        values = await db_con.executemany(
+            post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
+        )
+        print(values)
+        values = await db_con.executemany(
+            asset_insert_statement, [[asset[var] for var in asset_vars] for asset in insert_assets.values()]
+        )
+        print(values)
+        values = await db_con.executemany(
+            user_insert_statement, [[user[var] for var in user_vars] for user in insert_users.values()]
+        )
+        print(values)
+
+        values = await db_con.execute(api_dump_update_processed, row_ids, datetime.datetime.utcnow())
+        print(values)
+
+        print(i)
     await db_con.close()
 
 
