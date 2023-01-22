@@ -4,6 +4,7 @@ import pathlib
 from collections import defaultdict
 
 import httpx
+from httpx import ReadTimeout
 
 from asgi import twitter_url_to_orig
 
@@ -14,7 +15,7 @@ for file in pathlib.Path(f"{MEDIA_FOLDER}/twitter_media").glob("*"):
     if not file.is_file():
         continue
     file_stat = file.stat()
-    if file_stat.st_size < 700:
+    if file_stat.st_size < 200:
         bad_images.append(file.name)
 
 print(bad_images)
@@ -32,6 +33,10 @@ for image in bad_images:
 for image, files in uuid_removed_bad_images.items():
     if image not in files and pathlib.Path(f"{MEDIA_FOLDER}/twitter_media/{image}").exists():
         print("exists", image)
+        import shutil
+        shutil.copy(f"{MEDIA_FOLDER}/twitter_media/{image}",f"{MEDIA_FOLDER}/temp/{image}")
+        for each in files:
+            os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{MEDIA_FOLDER}/trash/{each}")
         continue
 
     if "mp4" in image:
@@ -39,10 +44,17 @@ for image, files in uuid_removed_bad_images.items():
     else:
         download_url = f"https://pbs.twimg.com/media/{image}:orig"
 
-    r = httpx.get(download_url)
+    try:
+        r = httpx.get(download_url,timeout=30)
+    except ReadTimeout:
+        print("tiemout", download_url)
+        raise
     if r.status_code == 200:
         subdomain, url_type, name, extension = twitter_url_to_orig(download_url)
         print("  valid", download_url, f"{name}.{extension}")
+
+        for each in files:
+            os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{MEDIA_FOLDER}/trash/{each}")
         open(f"{MEDIA_FOLDER}/twitter_media/{name}.{extension}", "wb").write(r.content)
 
     else:
