@@ -50,7 +50,7 @@ def extract_tweet_data_timeline(top_entry):
     return tweet
 
 
-twitter_video_url_regex_str = r"(?P<subdomain>[^.\/]*)\.twimg\.com\/(?P<type>ext_tw_video|amplify_video)/(?P<id>[\d]*)/(?P<pu>pu/)?vid/(?P<resolution>[x\d]*)/(?P<name>[a-zA-Z\d_-]*)(?:\?format=|\.)(?P<extension>[a-zA-Z0-9]{3,4})"
+twitter_video_url_regex_str = r"(?P<subdomain>[^.\/]*)\.twimg\.com\/(?P<type>ext_tw_video|amplify_video)/(?P<id>[\d]*)/(?P<pu>pu/|pr/)?vid/(?P<resolution>[x\d]*)/(?P<name>[a-zA-Z\d_-]*)(?:\?format=|\.)(?P<extension>[a-zA-Z0-9]{3,4})"
 twitter_url_regex = re.compile(twitter_video_url_regex_str)
 
 
@@ -265,6 +265,8 @@ async def run():
         for row in rows:
             api_dump_id, url, data, created_at, processed_at = row
             row_ids.append(api_dump_id)
+            if data == b'upstream connect error or disconnect/reset before headers. reset reason: remote reset':
+                continue
             tweets, assets, users = process_data_url(orjson.loads(data), url)
 
             for user in users.values():
