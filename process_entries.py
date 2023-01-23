@@ -21,10 +21,10 @@ from pg_connection_creds import connection_creds
 from process_entries_typing import APIOnedotOneHomeEntry
 
 
-def extract_tweet_data(entry):
+def extract_tweet_data_legacy(entry):
     tweet = dict(
         id=int(entry["id_str"]),
-        user_id=int(entry["user"]["id_str"]),
+        user_id=int(entry["user"]["id_str"]) if entry.get("user") else entry["user_id_str"],
         full_text=entry["full_text"],
         language=entry["lang"],
         retweet_count=entry["retweet_count"],
@@ -39,6 +39,14 @@ def extract_tweet_data(entry):
         urls=[url["expanded_url"] for url in entry["entities"]["urls"]],
         is_retweet=bool(entry.get("retweeted_status")),
     )
+    return tweet
+
+
+def extract_tweet_data_timeline(top_entry):
+    if top_entry.get("unmention_data"):
+        raise Exception
+    tweet = extract_tweet_data_legacy(top_entry["legacy"])
+    tweet["views"] = int(top_entry["views"].get("count", 0))
     return tweet
 
 
@@ -84,7 +92,7 @@ def extract_assets_data(entry, tweet_id: int) -> list[dict]:
                 "post_id": tweet_id,
                 "name": name,
                 "extension": extension,
-                "ext_alt_text": asset["ext_alt_text"]
+                "ext_alt_text": asset.get("ext_alt_text")
                 # datetime nullable from file request
             }
             media.append(media_asset)
@@ -118,11 +126,11 @@ def extract_assets_data(entry, tweet_id: int) -> list[dict]:
     return media
 
 
-def extract_users_data(entry) -> list[dict]:
+def extract_users_data_legacy(entry) -> list[dict]:
     users = list[dict]()
     users.append(
         {
-            "id": int(entry["user"]["id_str"]),
+            "id": int(entry["user"]["rest_id"]) if entry["user"].get("rest_id") else int(entry["user"]["id_str"]),
             "created_at": parse(entry["user"]["created_at"]),
             "name": entry["user"]["name"],
             "screen_name": entry["user"]["screen_name"],
@@ -147,7 +155,64 @@ def extract_users_data(entry) -> list[dict]:
     return users
 
 
-def process_data(api_data):
+def extract_users_data_timeline(top_entry):
+    legacy = top_entry["legacy"]
+    legacy.update(top_entry)
+    tweet = extract_users_data_legacy({"user": legacy})
+    return tweet
+
+
+def process_data_url(api_data, url: str):
+    if url.startswith("https://api.twitter.com/1.1/statuses/home_timeline.json"):
+        return process_data_legacy(api_data)
+    return process_timeline_data(api_data)
+
+
+def process_timeline_data(data):
+    tweets = dict[int:dict]()
+    assets = dict[tuple[str, str] : dict]()
+    users = dict[int:dict]()
+
+    data_inside = data["data"]["home"]["home_timeline_urt"]["instructions"]
+    if len(data_inside) > 1:
+        raise Exception
+    data_inside = data_inside[0]["entries"]
+    for tweet_entry in data_inside:
+        if not str(tweet_entry["entryId"]).startswith("tweet-"):
+            continue
+        print(tweet_entry["content"]["clientEventInfo"]["component"])
+        print(tweet_entry["content"]["itemContent"]["socialContext"])
+        print(tweet_entry["content"]["itemContent"]["tweetDisplayType"])
+        sub_data = tweet_entry["content"]["itemContent"]["tweet_results"]["result"]
+
+        tweet = extract_tweet_data_timeline(sub_data)
+        tweets[int(tweet["id"])] = tweet
+        assets_data = extract_assets_data(sub_data["legacy"], int(tweet["id"]))
+        for asset_data in assets_data:
+            assets[(asset_data["name"], asset_data["extension"])] = asset_data
+        users_data = extract_users_data_timeline(sub_data["core"]["user_results"]["result"])
+        for user_data in users_data:
+            users[int(user_data["id"])] = users_data
+
+        if sub_data.get("quoted_status_result"):
+            raise Exception
+
+        if sub_data["legacy"].get("retweeted_status_result"):
+            re_tweet = sub_data["legacy"]["retweeted_status_result"]["result"]
+            raise Exception
+            retweet = extract_tweet_data_legacy(tweet_entry["retweeted_status"])
+            tweets[int(retweet["id"])] = retweet
+            retweet_assets_data = extract_assets_data(tweet_entry["retweeted_status"], int(retweet["id"]))
+            for retweet_asset_data in retweet_assets_data:
+                assets[(retweet_asset_data["name"], retweet_asset_data["extension"])] = retweet_asset_data
+            users_data = extract_users_data_legacy(tweet_entry["retweeted_status"])
+            for user_data in users_data:
+                users[int(user_data["id"])] = users_data
+    return tweets, assets, users
+
+
+
+def process_data_legacy(api_data):
     tweets_parsed = dict[int:dict]()
     assets_parsed = dict[tuple[str, str] : dict]()
     users_parsed = dict[int:dict]()
@@ -157,22 +222,22 @@ def process_data(api_data):
 
     for tweet_entry in api_data:
         tweet_entry: APIOnedotOneHomeEntry
-        tweet = extract_tweet_data(tweet_entry)
+        tweet = extract_tweet_data_legacy(tweet_entry)
         tweets_parsed[int(tweet["id"])] = tweet
         assets_data = extract_assets_data(tweet_entry, int(tweet["id"]))
         for asset_data in assets_data:
             assets_parsed[(asset_data["name"], asset_data["extension"])] = asset_data
-        users_data = extract_users_data(tweet_entry)
+        users_data = extract_users_data_legacy(tweet_entry)
         for user_data in users_data:
             users_parsed[int(user_data["id"])] = user_data
 
         if tweet_entry.get("retweeted_status"):
-            retweet = extract_tweet_data(tweet_entry["retweeted_status"])
+            retweet = extract_tweet_data_legacy(tweet_entry["retweeted_status"])
             tweets_parsed[int(retweet["id"])] = retweet
             retweet_assets_data = extract_assets_data(tweet_entry["retweeted_status"], int(retweet["id"]))
             for retweet_asset_data in retweet_assets_data:
                 assets_parsed[(retweet_asset_data["name"], retweet_asset_data["extension"])] = retweet_asset_data
-            users_data = extract_users_data(tweet_entry["retweeted_status"])
+            users_data = extract_users_data_legacy(tweet_entry["retweeted_status"])
             for user_data in users_data:
                 users_parsed[int(user_data["id"])] = user_data
     return tweets_parsed, assets_parsed, users_parsed
@@ -200,7 +265,7 @@ async def run():
         for row in rows:
             api_dump_id, url, data, created_at, processed_at = row
             row_ids.append(api_dump_id)
-            tweets, assets, users = process_data(orjson.loads(data))
+            tweets, assets, users = process_data_url(orjson.loads(data), url)
 
             for user in users.values():
                 user["processed_at"] = created_at
