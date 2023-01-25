@@ -288,7 +288,8 @@ async def run():
     where 
     (
         url like 'https://api.twitter.com/graphql/%/HomeTimeline%'
-
+        or
+        url like 'https://api.twitter.com/1.1/statuses/home_timeline.json%'
     )and processed_at is null
     order by id asc limit 10000"""
 
