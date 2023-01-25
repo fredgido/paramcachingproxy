@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import fnmatch
 import re
 
 import asyncpg
@@ -24,7 +25,7 @@ from process_entries_typing import APIOnedotOneHomeEntry
 def extract_tweet_data_legacy(entry):
     tweet = dict(
         id=int(entry["id_str"]),
-        user_id=int(entry["user"]["id_str"]) if entry.get("user") else entry["user_id_str"],
+        user_id=int(entry["user"]["id_str"]) if entry.get("user") else int(entry["user_id_str"]),
         full_text=entry["full_text"],
         language=entry["lang"],
         retweet_count=entry["retweet_count"],
@@ -48,6 +49,8 @@ def extract_tweet_data_timeline(top_entry):
 
     if top_entry.get("unmention_data"):
         print(top_entry.get("unmention_data"))
+    if top_entry.get("__typename") == "TweetUnavailable":
+        return {}
     tweet = extract_tweet_data_legacy(top_entry["legacy"])
     tweet["views"] = int(top_entry.get("views", {}).get("count", 0))
     top_entry.update(tweet)
@@ -169,7 +172,7 @@ def extract_users_data_timeline(top_entry):
 def process_data_url(api_data, url: str):
     if url.startswith("https://api.twitter.com/1.1/statuses/home_timeline.json"):
         return process_data_legacy(api_data)
-    elif url.startswith("https://api.twitter.com/graphql/XMoTnsLCI_a4DyvHNLSoKQ/HomeTimeline"):
+    elif fnmatch.fnmatch(url, "https://api.twitter.com/graphql/*/HomeTimeline*"):
 
         return process_timeline_data(api_data)
     else:
@@ -199,15 +202,17 @@ def process_timeline_data(data):
     for tweet_entry in data_inside:
         if not str(tweet_entry["entryId"]).startswith("tweet-"):
             continue
-        print("clientEventInfo", tweet_entry["content"].get("clientEventInfo",{}).get("component"))
+        print("clientEventInfo", tweet_entry["content"].get("clientEventInfo", {}).get("component"))
         print("socialContext", tweet_entry["content"]["itemContent"].get("socialContext"))
         print(tweet_entry["content"]["itemContent"]["tweetDisplayType"])
         sub_data = tweet_entry["content"]["itemContent"]["tweet_results"]
         if not sub_data:
             continue
-        sub_data=sub_data["result"]
+        sub_data = sub_data["result"]
 
         tweet = extract_tweet_data_timeline(sub_data)
+        if not tweet:
+            continue
         tweets_parsed[int(tweet["id"])] = tweet
         assets_data = extract_assets_data(tweet, int(tweet["id"]))
         for asset_data in assets_data:
@@ -220,7 +225,7 @@ def process_timeline_data(data):
             quote_tweet = tweet["quoted_status_result"]["result"]
             quotetweet = extract_tweet_data_timeline(quote_tweet)
             tweets_parsed[int(quotetweet["id"])] = quotetweet
-            assets_data = extract_assets_data(quotetweet.get('legacy'), int(quotetweet["id"]))
+            assets_data = extract_assets_data(quotetweet.get("legacy"), int(quotetweet["id"]))
             for asset_data in assets_data:
                 assets_parsed[(asset_data["name"], asset_data["extension"])] = asset_data
             users_data = extract_users_data_timeline(quotetweet["core"]["user_results"]["result"])
@@ -234,7 +239,7 @@ def process_timeline_data(data):
             re_tweet = tweet["legacy"]["retweeted_status_result"]["result"]
             retweet = extract_tweet_data_timeline(re_tweet)
             tweets_parsed[int(retweet["id"])] = retweet
-            assets_data = extract_assets_data(retweet.get('legacy'), int(retweet["id"]))
+            assets_data = extract_assets_data(retweet.get("legacy"), int(retweet["id"]))
             for asset_data in assets_data:
                 assets_parsed[(asset_data["name"], asset_data["extension"])] = asset_data
             users_data = extract_users_data_timeline(tweet["core"]["user_results"]["result"])
@@ -280,7 +285,11 @@ async def run():
     get_statement = """
     SELECT id, url, "data", created_at, processed_at
     FROM public.api_dump
-    where url like 'https://api.twitter.com/graphql/XMoTnsLCI_a4DyvHNLSoKQ/HomeTimeline%' and processed_at is null
+    where 
+    (
+        url like 'https://api.twitter.com/graphql/%/HomeTimeline%'
+
+    )and processed_at is null
     order by id asc limit 10000"""
 
     for i in range(10000):
@@ -312,9 +321,12 @@ async def run():
             insert_assets.update(assets)
             insert_users.update(users)
 
-        values = await db_con.executemany(
-            post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
-        )
+        try:
+            values = await db_con.executemany(
+                post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
+            )
+        except Exception as e:
+            print(e)
         print(values)
         values = await db_con.executemany(
             asset_insert_statement, [[asset[var] for var in asset_vars] for asset in insert_assets.values()]
