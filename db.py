@@ -151,3 +151,8 @@ api_dump_update_processed = """
 UPDATE public.api_dump
 SET "processed_at" = $2
 WHERE "id" = any($1::int[]) ;"""
+
+
+"""
+CREATE INDEX asset_post_id_idx ON public.asset (post_id);
+"""

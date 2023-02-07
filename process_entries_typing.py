@@ -424,3 +424,20 @@ APIOnedotOneHomeEntry = TypedDict(
     },
 )
 
+
+
+ActivityEntry = TypedDict(
+    "ActivityEntry",
+    {
+        "action": str,
+        "max_position": str,
+        "min_position": str,
+        "created_at": str,
+        "target_objects": list,
+        "target_objects_size": int,
+        "targets": list[dict],
+        "targets_size": int,
+        "sources": list[dict],
+        "sources_size": int
+    }
+)

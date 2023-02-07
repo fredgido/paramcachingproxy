@@ -19,7 +19,7 @@ from db import (
     api_dump_update_processed,
 )
 from pg_connection_creds import connection_creds
-from process_entries_typing import APIOnedotOneHomeEntry
+from process_entries_typing import APIOnedotOneHomeEntry, ActivityEntry
 
 
 def extract_tweet_data_legacy(entry):
@@ -172,8 +172,9 @@ def extract_users_data_timeline(top_entry):
 def process_data_url(api_data, url: str):
     if url.startswith("https://api.twitter.com/1.1/statuses/home_timeline.json"):
         return process_data_legacy(api_data)
+    elif url.startswith("https://api.twitter.com/1.1/activity/by_friends.json"):
+        return process_data_legacy(api_data)
     elif fnmatch.fnmatch(url, "https://api.twitter.com/graphql/*/HomeTimeline*"):
-
         return process_timeline_data(api_data)
     else:
         raise Exception
@@ -279,6 +280,32 @@ def process_data_legacy(api_data):
     return tweets_parsed, assets_parsed, users_parsed
 
 
+def process_activity(api_data):
+    tweets_parsed = dict[int:dict]()
+    assets_parsed = dict[tuple[str, str] : dict]()
+    users_parsed = dict[int:dict]()
+
+    if "errors" in api_data:
+        return {}, {}, {}
+
+    for tweet_entry in api_data:
+        tweet_entry: ActivityEntry
+        if tweet_entry["action"] == "follow":
+            for user_raw_data in tweet_entry["targets"]:
+                users_data = extract_users_data_legacy(tweet_entry)
+                for user_data in users_data:
+                    users_parsed[int(user_data["id"])] = user_data
+            for user_raw_data in tweet_entry["sources"]:
+                users_data = extract_users_data_legacy(tweet_entry)
+                for user_data in users_data:
+                    users_parsed[int(user_data["id"])] = user_data
+        elif tweet_entry["favorite"] == "follow":
+            raise Exception
+        else:
+            raise Exception
+    return tweets_parsed, assets_parsed, users_parsed
+
+
 async def run():
     db_con: Connection = await asyncpg.connect(**connection_creds)
 
@@ -322,12 +349,10 @@ async def run():
             insert_assets.update(assets)
             insert_users.update(users)
 
-        try:
-            values = await db_con.executemany(
-                post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
-            )
-        except Exception as e:
-            print(e)
+
+        values = await db_con.executemany(
+            post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
+        )
         print(values)
         values = await db_con.executemany(
             asset_insert_statement, [[asset[var] for var in asset_vars] for asset in insert_assets.values()]
