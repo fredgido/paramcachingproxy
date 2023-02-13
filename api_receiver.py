@@ -39,6 +39,8 @@ pool_storage_lock = asyncio.Lock()
 UVICORN_WORKERS = 4
 POOL_MIN_WORKERS = int(10 / float(UVICORN_WORKERS))
 POOL_MAX_WORKERS = int(100 / float(UVICORN_WORKERS)) - 1
+PG_CONNECTION_POOL_COMMAND_TIMEOUT = 30
+PG_CONNECTION_POOL_TIMEOUT = 30
 
 
 async def get_pg_connection_pool():
@@ -49,7 +51,11 @@ async def get_pg_connection_pool():
             pool = pool_storage.get(current_loop)
             if not pool:
                 pool = await asyncpg.create_pool(
-                    min_size=POOL_MIN_WORKERS, max_size=POOL_MAX_WORKERS, **connection_creds
+                    min_size=POOL_MIN_WORKERS,
+                    max_size=POOL_MAX_WORKERS,
+                    command_timeout=PG_CONNECTION_POOL_COMMAND_TIMEOUT,
+                    timeout=PG_CONNECTION_POOL_TIMEOUT,
+                    **connection_creds,
                 )
                 pool_storage[current_loop] = pool
     return pool

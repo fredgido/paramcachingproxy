@@ -18,7 +18,7 @@ from asgiref.typing import HTTPScope
 
 CoroutineFunction = Callable[[Union[dict, type(None)]], Awaitable]
 
-client = httpx.AsyncClient()
+client = httpx.AsyncClient(timeout=61)
 
 path_settings = os.getenv("MEDIA_FOLDER", ".")
 twitter_media_path = pathlib.Path(f"{path_settings}/twitter_media")
