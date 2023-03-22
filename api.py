@@ -15,12 +15,15 @@ from asyncpg import Connection as APGConnection, Pool
 from pg_connection_creds import connection_creds
 
 select_statement = """
-SELECT row_to_json(p), array_agg(row_to_json(a))
+select json_agg(post_and_assets)
+from (
+SELECT json_build_object('post',row_to_json(p),'assets',json_agg(row_to_json(a))) as post_and_assets
 FROM public.post p
 left join public.asset a on p.id =a.post_id 
 where p.id = any($1::int8[])
 group by p.id 
 having count(a.id) >0
+) as post_assets_json_query
 """
 
 
@@ -115,14 +118,27 @@ class App:
             return await cls.return_json(connection, {"error": "Missing query param"})
 
         if b"id" in query:
+            ids = query.get(b"id")
+            ids = [int(post_id) for post_id in (b",".join(ids)).decode().split(",")]
+
             pool = await get_pg_connection_pool()
             async with pool.acquire() as db_con:
                 db_con: APGConnection
-                values = await db_con.fetch(select_statement, [[1625331589592006656]])
 
+                def encoder(x):
+                    return x
 
-            return await cls.return_json(connection,  values)
-        return await cls.return_json(connection,  {"error": "unknown query param"})
+                def decoder(x):
+                    return x
+
+                await db_con.set_type_codec("text", schema="pg_catalog", encoder=encoder, decoder=decoder, format="binary")
+                values = await db_con.fetch(select_statement, [ids])
+
+            if values:
+                return await cls.return_json(connection, values[0][0].encode())
+            else:
+                return await cls.return_json(connection, {"error": "not found"}, status_code=404)
+        return await cls.return_json(connection, {"error": "unknown query param"})
 
     @staticmethod
     async def return_text(connection: Connection, message: bytes, status_code: int = 200):
@@ -144,7 +160,7 @@ class App:
         return
 
     @staticmethod
-    async def return_json(connection: Connection, message: dict, status_code: int = 200):
+    async def return_json(connection: Connection, message: dict | bytes, status_code: int = 200):
         await connection.send(
             {
                 "type": "http.response.start",
@@ -157,7 +173,7 @@ class App:
         await connection.send(
             {
                 "type": "http.response.body",
-                "body": orjson.dumps(message),
+                "body": orjson.dumps(message) if isinstance(message, dict) else message,
             }
         )
         return
