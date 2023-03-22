@@ -5,7 +5,7 @@ import pyvips
 from PIL import Image
 from PIL.Image import Transpose
 
-MEDIA_FOLDER = "/media/fredfernandes/Elements/twitter_dump/twitter_media"
+MEDIA_FOLDER = "/media/fredgido/p300_3tb/twitter_media/all"
 bad_images = []
 
 for file in pathlib.Path(f"{MEDIA_FOLDER}/twitter_media").glob("*"):

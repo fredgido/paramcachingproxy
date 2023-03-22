@@ -185,6 +185,9 @@ def process_timeline_data(data):
     assets_parsed = dict[tuple[str, str] : dict]()
     users_parsed = dict[int:dict]()
 
+    if not data["data"]["home"]:
+        return tweets_parsed, assets_parsed, users_parsed
+
     base_data_inside = data["data"]["home"]["home_timeline_urt"]["instructions"]
     data_inside = None
 
@@ -203,9 +206,9 @@ def process_timeline_data(data):
     for tweet_entry in data_inside:
         if not str(tweet_entry["entryId"]).startswith("tweet-"):
             continue
-        print("clientEventInfo", tweet_entry["content"].get("clientEventInfo", {}).get("component"))
-        print("socialContext", tweet_entry["content"]["itemContent"].get("socialContext"))
-        print(tweet_entry["content"]["itemContent"]["tweetDisplayType"])
+        #print("clientEventInfo", tweet_entry["content"].get("clientEventInfo", {}).get("component"))
+        #print("socialContext", tweet_entry["content"]["itemContent"].get("socialContext"))
+        #print(tweet_entry["content"]["itemContent"]["tweetDisplayType"])
         sub_data = tweet_entry["content"]["itemContent"]["tweet_results"]
         if not sub_data:
             continue

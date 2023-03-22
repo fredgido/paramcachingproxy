@@ -8,7 +8,7 @@ from httpx import ReadTimeout
 
 from asgi import twitter_url_to_orig
 
-MEDIA_FOLDER = "/media/fredfernandes/Elements/twitter_dump/twitter_media"
+MEDIA_FOLDER = "/media/fredgido/p300_3tb/twitter_media/all"
 bad_images = []
 
 for file in pathlib.Path(f"{MEDIA_FOLDER}/twitter_media").glob("*"):
@@ -20,21 +20,21 @@ for file in pathlib.Path(f"{MEDIA_FOLDER}/twitter_media").glob("*"):
 
 print(bad_images)
 
-uuid_removed_bad_images = defaultdict(set)
+base_image_name__bad_images = defaultdict(set)
 
 UUID_LEN = len("24295a93-5f14-4217-bb51-71cbe2e8413d")
 for image in bad_images:
     if len(image) > UUID_LEN:
-        uuid_removed_bad_images[image[: len(image) - UUID_LEN]].add(image)
+        base_image_name__bad_images[image[: len(image) - UUID_LEN]].add(image)
     else:
-        uuid_removed_bad_images[image].add(image)
+        base_image_name__bad_images[image].add(image)
 
 
-for image, files in uuid_removed_bad_images.items():
-    if image not in files and pathlib.Path(f"{MEDIA_FOLDER}/twitter_media/{image}").exists():
+for image, files in base_image_name__bad_images.items():
+    if image not in files and pathlib.Path(f"{MEDIA_FOLDER}/twitter_media/{image}").exists(): # good image exists
         print("exists", image)
         import shutil
-        shutil.copy(f"{MEDIA_FOLDER}/twitter_media/{image}",f"{MEDIA_FOLDER}/temp/{image}")
+        shutil.copy(f"{MEDIA_FOLDER}/twitter_media/{image}", f"{MEDIA_FOLDER}/temp/{image}")
         for each in files:
             os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{MEDIA_FOLDER}/trash/{each}")
         continue
@@ -58,7 +58,7 @@ for image, files in uuid_removed_bad_images.items():
         open(f"{MEDIA_FOLDER}/twitter_media/{name}.{extension}", "wb").write(r.content)
 
     else:
-        print("invalid", download_url)
+        print("invalid", r.status_code, download_url)
         if ".png" in download_url:
             download_url = download_url.replace("png", "jpg")
             extension = "jpg"
@@ -75,4 +75,4 @@ for image, files in uuid_removed_bad_images.items():
             for each in files:
                 os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{MEDIA_FOLDER}/trash/{each}")
         else:
-            print("invalid", download_url)
+            print("invalid second try", r.status_code, download_url)

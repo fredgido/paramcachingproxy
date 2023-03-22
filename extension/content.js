@@ -1,14 +1,15 @@
 'use strict';
 
 if (!globalThis.hasOwnProperty('browser')) {
-	globalThis.browser = globalThis.chrome;
+    globalThis.browser = globalThis.chrome;
 }
 
 globalThis.addEventListener('twitter-proxy-page-script:api-response',
-	function(e) {
-		browser.runtime.sendMessage({type: e.type, detail: e.detail});
-	},
-	{passive: true, capture: true});
+    function (e) {
+        e.stopImmediatePropagation();
+        browser.runtime.sendMessage({type: e.type, detail: e.detail});
+    },
+    {passive: true, capture: true});
 
 const pageScript = `
 	(function() {
@@ -52,4 +53,6 @@ const pageScript = `
 var script = document.createElement('script');
 script.id = 'twitter-proxy-page-script';
 script.textContent = pageScript;
-(document.head ?? document.documentElement).appendChild(script);
+if (!document.getElementById('twitter-proxy-page-script')) {
+    (document.head ?? document.documentElement).appendChild(script);
+}

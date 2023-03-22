@@ -23,6 +23,7 @@ client = httpx.AsyncClient(timeout=61)
 path_settings = os.getenv("MEDIA_FOLDER", ".")
 twitter_media_path = pathlib.Path(f"{path_settings}/twitter_media")
 twitter_media_path.mkdir(exist_ok=True)
+print(twitter_media_path)
 
 twitter_url_regex_str = r"(?P<subdomain>[^.\/]*)\.twimg\.com\/(?P<type>tweet_video_thumb|media|tweet_video)/(?P<name>[a-zA-Z\d_-]*)(?:\?format=|\.)(?P<extension>[a-zA-Z0-9]{3,4})"
 twitter_url_regex = re.compile(twitter_url_regex_str)
@@ -357,7 +358,7 @@ if __name__ == "__main__":
     uvicorn.run(
         App,
         host="0.0.0.0",
-        port=7020,
+        port=7034,
         log_level="info",
         loop="uvloop",
         timeout_keep_alive=70,

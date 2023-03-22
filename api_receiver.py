@@ -151,7 +151,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "api_receiver:App",
         host="0.0.0.0",
-        port=7021,
+        port=7035,
         log_level="info",
         # log_level="critical",
         loop="uvloop",
