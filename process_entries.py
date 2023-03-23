@@ -346,7 +346,7 @@ async def run():
                 parsed_data = orjson.loads(data)
             except orjson.JSONDecodeError:
                 print("bad id of dump ", api_dump_id)
-                raise
+                continue
             tweets, assets, users = process_data_url(parsed_data, url)
 
             for user in users.values():
