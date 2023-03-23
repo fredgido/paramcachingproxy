@@ -124,14 +124,6 @@ class App:
             pool = await get_pg_connection_pool()
             async with pool.acquire() as db_con:
                 db_con: APGConnection
-
-                def encoder(x):
-                    return x
-
-                def decoder(x):
-                    return x
-
-                await db_con.set_type_codec("text", schema="pg_catalog", encoder=encoder, decoder=decoder, format="binary")
                 values = await db_con.fetch(select_statement, [ids])
 
             if values:

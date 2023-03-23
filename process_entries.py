@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import fnmatch
 import re
+import time
 
 import asyncpg
 import orjson
@@ -312,7 +313,8 @@ def process_activity(api_data):
 async def run():
     db_con: Connection = await asyncpg.connect(**connection_creds)
 
-    get_statement = """
+    limit = 3000
+    get_statement = f"""
     SELECT id, url, "data", created_at, processed_at
     FROM public.api_dump
     where 
@@ -321,9 +323,10 @@ async def run():
         or
         url like 'https://api.twitter.com/1.1/statuses/home_timeline.json%'
     )and processed_at is null
-    order by id asc limit 10000"""
+    order by id asc limit {3000}"""
 
     for i in range(10000):
+        start_time = time.perf_counter()
         insert_tweets = dict()
         insert_assets = dict()
         insert_users = dict()
@@ -332,13 +335,19 @@ async def run():
         rows = await db_con.fetch(get_statement)
         if not rows:
             break
-
+        print(time.perf_counter()-start_time," seconds to fetch")
+        fetch_end = time.perf_counter()
         for row in rows:
             api_dump_id, url, data, created_at, processed_at = row
             row_ids.append(api_dump_id)
             if data == b"upstream connect error or disconnect/reset before headers. reset reason: remote reset":
                 continue
-            tweets, assets, users = process_data_url(orjson.loads(data), url)
+            try:
+                parsed_data = orjson.loads(data)
+            except orjson.JSONDecodeError:
+                print("bad id of dump ", api_dump_id)
+                raise
+            tweets, assets, users = process_data_url(parsed_data, url)
 
             for user in users.values():
                 user["processed_at"] = created_at
@@ -352,6 +361,8 @@ async def run():
             insert_assets.update(assets)
             insert_users.update(users)
 
+        print(time.perf_counter()-fetch_end," seconds to process")
+        process_end = time.perf_counter()
 
         values = await db_con.executemany(
             post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
@@ -368,6 +379,10 @@ async def run():
 
         values = await db_con.execute(api_dump_update_processed, row_ids, datetime.datetime.utcnow())
         print(values)
+
+        print(time.perf_counter()-process_end," seconds to save")
+        print(time.perf_counter()-start_time,f" seconds for {limit}")
+
 
         print(i)
     await db_con.close()
