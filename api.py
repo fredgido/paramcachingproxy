@@ -26,6 +26,24 @@ having count(a.id) >0
 ) as post_assets_json_query
 """
 
+select_statement_recent = """
+select json_agg(post_and_assets)
+from (
+SELECT json_build_object('post',row_to_json(p),'assets',json_agg(row_to_json(a))) as post_and_assets
+FROM public.post p
+left join public.asset a on p.id =a.post_id 
+group by p.id 
+order by p.processed_at desc
+) as post_assets_json_query
+limit 100
+"""
+
+select_recent_assets = """
+select post_id
+FROM public.asset
+order by processed_at  desc
+limit 2000
+"""
 
 @dataclass
 class Connection:
@@ -126,7 +144,19 @@ class App:
                 db_con: APGConnection
                 values = await db_con.fetch(select_statement, [ids])
 
-            if values:
+            if values and values[0][0]:
+                return await cls.return_json(connection, values[0][0].encode())
+            else:
+                return await cls.return_json(connection, {"error": "not found"}, status_code=404)
+
+        if b"recent" in query:
+            pool = await get_pg_connection_pool()
+            async with pool.acquire() as db_con:
+                db_con: APGConnection
+                post_ids = await db_con.fetch(select_recent_assets)
+                values = await db_con.fetch(select_statement, [post[0] for post in post_ids])
+
+            if values and values[0][0]:
                 return await cls.return_json(connection, values[0][0].encode())
             else:
                 return await cls.return_json(connection, {"error": "not found"}, status_code=404)
@@ -159,6 +189,9 @@ class App:
                 "status": status_code,
                 "headers": [
                     [b"content-type", b"application/json"],
+                    [b"access-control-allow-origin", b"*"],
+                    [b"access-control-request-method", b"GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"],
+                    [b"access-control-allow-headers", b"*"],
                 ],
             }
         )

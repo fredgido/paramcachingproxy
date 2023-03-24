@@ -10,6 +10,6 @@ uvloop
 asgiref
 aiofiles
 asyncpg
-
+renameat2
 
 git+https://github.com/half-pie/half-json.git@d8064e90ac769547c22db11bcbe47fcb4f1eb600

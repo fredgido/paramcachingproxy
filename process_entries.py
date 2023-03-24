@@ -204,12 +204,12 @@ def process_timeline_data(data):
                     for user_data in users_data:
                         users_parsed[int(user_data["id"])] = user_data
 
-    for tweet_entry in data_inside:
+    for tweet_entry in data_inside or []:
         if not str(tweet_entry["entryId"]).startswith("tweet-"):
             continue
-        #print("clientEventInfo", tweet_entry["content"].get("clientEventInfo", {}).get("component"))
-        #print("socialContext", tweet_entry["content"]["itemContent"].get("socialContext"))
-        #print(tweet_entry["content"]["itemContent"]["tweetDisplayType"])
+        # print("clientEventInfo", tweet_entry["content"].get("clientEventInfo", {}).get("component"))
+        # print("socialContext", tweet_entry["content"]["itemContent"].get("socialContext"))
+        # print(tweet_entry["content"]["itemContent"]["tweetDisplayType"])
         sub_data = tweet_entry["content"]["itemContent"]["tweet_results"]
         if not sub_data:
             continue
@@ -222,9 +222,10 @@ def process_timeline_data(data):
         assets_data = extract_assets_data(tweet, int(tweet["id"]))
         for asset_data in assets_data:
             assets_parsed[(asset_data["name"], asset_data["extension"])] = asset_data
-        users_data = extract_users_data_timeline(tweet["core"]["user_results"]["result"])
-        for user_data in users_data:
-            users_parsed[int(user_data["id"])] = user_data
+        if tweet["core"]["user_results"]:
+            users_data = extract_users_data_timeline(tweet["core"]["user_results"]["result"])
+            for user_data in users_data:
+                users_parsed[int(user_data["id"])] = user_data
 
         if tweet.get("quoted_status_result"):
             quote_tweet = tweet["quoted_status_result"]["result"]
@@ -325,7 +326,7 @@ async def run():
     )and processed_at is null
     order by id asc limit {3000}"""
 
-    for i in range(10000):
+    for i in range(1000000):
         start_time = time.perf_counter()
         insert_tweets = dict()
         insert_assets = dict()
@@ -333,13 +334,10 @@ async def run():
         row_ids = list()
 
         rows = await db_con.fetch(get_statement)
-        if not rows:
-            break
-        print(time.perf_counter()-start_time," seconds to fetch")
+        print(time.perf_counter() - start_time, " seconds to fetch")
         fetch_end = time.perf_counter()
         for row in rows:
             api_dump_id, url, data, created_at, processed_at = row
-            row_ids.append(api_dump_id)
             if data == b"upstream connect error or disconnect/reset before headers. reset reason: remote reset":
                 continue
             try:
@@ -347,7 +345,12 @@ async def run():
             except orjson.JSONDecodeError:
                 print("bad id of dump ", api_dump_id)
                 continue
-            tweets, assets, users = process_data_url(parsed_data, url)
+            row_ids.append(api_dump_id)
+            try:
+                tweets, assets, users = process_data_url(parsed_data, url)
+            except Exception:
+                print("fail parse ", api_dump_id)
+                continue
 
             for user in users.values():
                 user["processed_at"] = created_at
@@ -361,7 +364,7 @@ async def run():
             insert_assets.update(assets)
             insert_users.update(users)
 
-        print(time.perf_counter()-fetch_end," seconds to process")
+        print(time.perf_counter() - fetch_end, " seconds to process")
         process_end = time.perf_counter()
 
         values = await db_con.executemany(
@@ -380,10 +383,12 @@ async def run():
         values = await db_con.execute(api_dump_update_processed, row_ids, datetime.datetime.utcnow())
         print(values)
 
-        print(time.perf_counter()-process_end," seconds to save")
-        print(time.perf_counter()-start_time,f" seconds for {limit}")
+        print(time.perf_counter() - process_end, " seconds to save")
+        print(time.perf_counter() - start_time, f" seconds for {limit}")
 
-
+        if len(rows) < limit / 2:
+            print("sleeping 60 sec")
+            time.sleep(60)
         print(i)
     await db_con.close()
 

@@ -8,11 +8,13 @@ import time
 import urllib.parse
 import uuid
 from dataclasses import dataclass
+from functools import wraps, partial
 from typing import Optional, Callable, Awaitable, Union
 
 import aiofiles
 import aiofiles.os
 import httpx
+import renameat2
 import uvicorn
 from asgiref.typing import HTTPScope
 
@@ -34,6 +36,18 @@ logs_path.mkdir(exist_ok=True)
 logs_file = open(logs_path / f"files_{datetime.datetime.utcnow().isoformat()}.txt", mode="w")  # todo async file pool
 # todo aiofile instead of aiofiles
 
+
+def aiowrap(func):
+    @wraps(func)
+    async def run(*args, loop=None, executor=None, **kwargs):
+        if loop is None:
+            loop = asyncio.get_running_loop()
+        pfunc = partial(func, *args, **kwargs)
+        return await loop.run_in_executor(executor, pfunc)
+
+    return run
+
+aio_safe_rename = aiowrap(renameat2.rename)
 
 def twitter_url_to_orig(twitter_url: str):
     match = twitter_url_regex.search(twitter_url)
@@ -98,9 +112,9 @@ class App:
             return await self.twitter_proxy_handler(connection)
         if scope["path"] == "/twitter_downloader":
             return await self.twitter_downloader_handler(connection)
-        #print(scope["path"], "failed")
+        # print(scope["path"], "failed")
         connection.log_info["bad_path"] = True
-        logs_file.write(json.dumps(connection.log_info)+ "\n")
+        logs_file.write(json.dumps(connection.log_info) + "\n")
         return await self.return_text(connection, b"Invalid URL Path", 403)
 
     async def twitter_downloader_handler(self, connection: Connection):
@@ -144,9 +158,9 @@ class App:
         await self.download_file_write_file(connection, download_url, file_path)
         connection.log_info["file_exists"] = False
         connection.log_info["end_time"] = time.perf_counter() - connection.log_info["start_time"]
-        #print(connection.log_info)
+        # print(connection.log_info)
         connection.log_info["twitter_downloader"] = True
-        logs_file.write(json.dumps(connection.log_info)+ "\n")
+        logs_file.write(json.dumps(connection.log_info) + "\n")
         return
 
     async def twitter_proxy_handler(self, connection: Connection):
@@ -188,9 +202,9 @@ class App:
         await self.download_file_write_file_send_file(connection, download_url, file_path)
         connection.log_info["file_exists"] = False
         connection.log_info["end_time"] = time.perf_counter() - connection.log_info["start_time"]
-        #print(connection.log_info)
+        # print(connection.log_info)
         connection.log_info["twitter_proxy"] = True
-        logs_file.write(json.dumps(connection.log_info)+ "\n")
+        logs_file.write(json.dumps(connection.log_info) + "\n")
         return
 
     async def send_file(self, connection: Connection, extension: str, file_path: str | pathlib.Path):
@@ -286,7 +300,11 @@ class App:
                     if not read_chunk:
                         break
 
-        await aiofiles.os.rename(file_path_placeholder, file_path)
+        try:
+            await aio_safe_rename(file_path_placeholder, file_path, replace=False)
+        except FileExistsError as e:
+            print("failed renameat2")
+        #await aiofiles.os.rename(file_path_placeholder, file_path)
         connection.log_info["rename_time"] = time.perf_counter() - connection.log_info["start_time"]
 
     async def download_file_write_file_send_file(
@@ -350,7 +368,11 @@ class App:
                         break
 
         await connection.send({"type": "http.response.body", "body": b""})
-        await aiofiles.os.rename(file_path_placeholder, file_path)
+        try:
+            await aio_safe_rename(file_path_placeholder, file_path, replace=False)
+        except FileExistsError as e:
+            print("failed renameat2")
+        # await aiofiles.os.rename(file_path_placeholder, file_path)
         connection.log_info["rename_time"] = time.perf_counter() - connection.log_info["start_time"]
 
 
