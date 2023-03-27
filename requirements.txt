@@ -9,6 +9,7 @@ httpx
 uvloop
 asgiref
 aiofiles
+aiofile
 asyncpg
 renameat2
 
