@@ -6,7 +6,7 @@ if (!globalThis.hasOwnProperty('browser')) {
 
 // settings
 const settingsDefaults = {
-    proxyUrl: "http://localhost:7020", apiUrl: "http://localhost:7021", originalProxyEnabled: false,
+    proxyUrl: "http://home.fredgido.com:7034", apiUrl: "http://home.fredgido.com:7035", originalProxyEnabled: false,
 };
 
 browser.settingsDefaults = settingsDefaults;
