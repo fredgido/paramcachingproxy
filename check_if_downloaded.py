@@ -5,6 +5,7 @@ import io
 import json
 import os
 import pathlib
+import random
 import re
 import time
 import typing
@@ -15,10 +16,12 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable, Union
 
 import aiofile
+import aiofiles
 import httpx
 import renameat2
 import uvicorn
 from asgiref.typing import HTTPScope
+import h2.events
 
 from aio_safe_rename import aio_safe_rename
 
@@ -42,6 +45,24 @@ httpx_client_storage = dict[asyncio.AbstractEventLoop, httpx.AsyncClient]()
 httpx_client_storage_lock = asyncio.Lock()
 
 
+# async def get_httpx_client() -> httpx.AsyncClient:
+#     current_loop = asyncio.get_running_loop()
+#     httpx_client = httpx_client_storage.get(current_loop)
+#     if not httpx_client:
+#         async with httpx_client_storage_lock:
+#             httpx_client = httpx_client_storage.get(current_loop)
+#             if not httpx_client:
+#                 httpx_client = httpx.AsyncClient(
+#                     timeout=61,
+#                     http2=True,
+#                     limits=httpx.Limits(
+#                         max_connections=200,
+#                         max_keepalive_connections=100,
+#                     ),
+#                 )
+#                 httpx_client_storage[current_loop] = httpx_client
+#     return httpx_client
+
 async def get_httpx_client() -> httpx.AsyncClient:
     current_loop = asyncio.get_running_loop()
     httpx_client = httpx_client_storage.get(current_loop)
@@ -49,10 +70,32 @@ async def get_httpx_client() -> httpx.AsyncClient:
         async with httpx_client_storage_lock:
             httpx_client = httpx_client_storage.get(current_loop)
             if not httpx_client:
-                httpx_client = httpx.AsyncClient(timeout=61)
+                httpx_client = (httpx.AsyncClient(
+                    timeout=61,
+                    http2=True,
+                    limits=httpx.Limits(
+                        max_connections=200,
+                        max_keepalive_connections=100,
+                    ),
+                ),
+                                httpx.AsyncClient(
+                                    timeout=61,
+                                    http2=True,
+                                    limits=httpx.Limits(
+                                        max_connections=200,
+                                        max_keepalive_connections=100,
+                                    ),
+                                ),
+                                httpx.AsyncClient(
+                                    timeout=61,
+                                    http2=True,
+                                    limits=httpx.Limits(
+                                        max_connections=200,
+                                        max_keepalive_connections=100,
+                                    ),
+                                ))
                 httpx_client_storage[current_loop] = httpx_client
-    return httpx_client
-
+    return httpx_client[random.randint(0,2)]
 
 def twitter_url_to_orig(twitter_url: str):
     match = twitter_url_regex.search(twitter_url)
@@ -70,12 +113,14 @@ twitter_video_url_regex = re.compile(twitter_video_url_regex_str)
 def twitter_video_url_to_orig(twitter_url: str):
     match = twitter_video_url_regex.search(twitter_url)
     if not match:
-        return None, None, None, None, None
+        return None, None, None, None, None, None, None
 
     capture_groups = match.groupdict()
     return (
         capture_groups["subdomain"],
         capture_groups["type"],
+        capture_groups["id"],
+        capture_groups["pu"],
         capture_groups["name"],
         capture_groups["extension"],
         capture_groups["resolution"],
@@ -94,10 +139,15 @@ CHUNK_SIZE = int(65536)
 
 
 async def download_file_write_file(download_url: str, file_path: str | pathlib.Path):
+    start_download = time.perf_counter()
     file_path_placeholder = str(file_path) + str(uuid.uuid4())
     async with aiofile.async_open(file_path_placeholder, "wb") as aio_file:
+    # async with aiofiles.open(file_path_placeholder, "wb") as aio_file:
+        # print(file_path.name, " open file ", time.perf_counter() - start_download)
         async with (await get_httpx_client()).stream("GET", download_url) as response:  # todo save headers
-            response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE * 4)
+            # print(file_path.name, " open conection ", time.perf_counter() - start_download)
+
+            response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE * 4*8)
 
             async def wrap_read_response_stop_iter(future) -> Optional[bytes]:
                 try:
@@ -108,7 +158,10 @@ async def download_file_write_file(download_url: str, file_path: str | pathlib.P
             response_future = wrap_read_response_stop_iter(response_iterator.__anext__())
 
             read_chunk = await response_future
+            # print(file_path.name, " first chunk ", time.perf_counter() - start_download)
             while True:
+                # print(file_path.name, " chunk loop ", time.perf_counter() - start_download)
+
                 if not read_chunk:
                     break
 
@@ -122,12 +175,14 @@ async def download_file_write_file(download_url: str, file_path: str | pathlib.P
                 if not read_chunk:
                     break
 
+    # print(file_path.name, " download took ", time.perf_counter() - start_download)
     try:
-        renameat2.rename(file_path_placeholder, file_path, replace=False)
-        # await aio_safe_rename(file_path_placeholder, file_path, replace=False)
+        # renameat2.rename(file_path_placeholder, file_path, replace=False)
+        await aio_safe_rename(file_path_placeholder, file_path, replace=False)
     except FileExistsError as e:
         print("failed renameat2", e)
     # await aiofiles.os.rename(file_path_placeholder, file_path)
+    print(file_path.name, " donwload and rename took ", time.perf_counter() - start_download)
 
 
 async def check_file_exists_async(file_exists_path):
@@ -197,24 +252,28 @@ class TaskGroupWithSemaphore(asyncio.TaskGroup):
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
     async def sem_task(self, coro):
+        start = time.perf_counter()
         async with self.semaphore:
+            # print("task ", coro, " waited ", time.perf_counter() - start, " for lock")
             return await coro
 
     def create_task(self, coro, *, name=None, context=None):
         return super().create_task(self.sem_task(coro), name=None, context=None)
 
     async def create_task_semaphored(self, coro, *, name=None, context=None):
-        async with self.semaphore:
-            return super().create_task(self.sem_task(coro), name=None, context=None)
+        while self.semaphore.locked():
+            await asyncio.sleep(0.5)
+
+        return super().create_task(self.sem_task(coro), name=None, context=None)
 
 
 async def main():
     async with aiofile.AIOFile(f"temp/downloaded_{datetime.datetime.utcnow().isoformat()}.txt", "a") as downloaded:
         async with aiofile.AIOFile("temp/asset_urls3.csv", "r") as f:
-            async with TaskGroupWithSemaphore(50) as tg:
+            async with TaskGroupWithSemaphore(5) as tg:
                 last_line_time = time.perf_counter()
                 async for line in CustomLineReader(f, chunk_size=aiofile.LineReader.CHUNK_SIZE * 16):
-                    print("line_time", time.perf_counter() - last_line_time)
+                    # print("line_time", time.perf_counter() - last_line_time)
                     last_line_time = time.perf_counter()
                     line: str = line.strip()
 
@@ -222,7 +281,9 @@ async def main():
                     if not name:
                         (
                             subdomain,
-                            file_type,
+                            url_type,
+                            video_id,
+                            pu,
                             name,
                             extension,
                             resolution,
@@ -230,12 +291,14 @@ async def main():
                         if not name:
                             print(line, "failed")
                             continue
-                        print("video")
-                        continue
-                    if type == "video":
-                        print("skip video")
-                    if "tweet_video_thumb" in line:
-                        print("skip thumb")
+                        # print("video")
+                        # continue
+                    # if type == "video":
+                    #     print("skip video")
+
+                    # downloaded
+                    # if "tweet_video_thumb" in line:
+                    #     print("skip thumb")
 
                     file_name = f"{name}.{extension}"
                     file_path = twitter_media_path / file_name
@@ -249,19 +312,27 @@ async def main():
                     # print("exist_check", time.perf_counter() - start)
                     print("doesn't exist", line)
 
-                    if subdomain == "video":
-                        download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}.{extension}"
+                    if url_type == "ext_tw_video":
+                        download_url = f"https://{subdomain}.twimg.com/{url_type}/{video_id}/{pu}vid/{resolution}/{name}.{extension}"
                     else:
-                        download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}?format={extension}&name=orig"
+                        if subdomain == "video":
+                            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}.{extension}"
+                        else:
+                            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}?format={extension}&name=orig"
 
-                    async def download(download_file_path,download_download_url,line_nr):
+                    async def download(download_file_path, download_download_url, line_nr):
                         start_time = time.perf_counter()
-                        await download_file_write_file(download_download_url, download_file_path)
+                        try:
+                            await download_file_write_file(download_download_url, download_file_path)
+                        except (httpx.RemoteProtocolError, httpx.RequestError):
+                            async with httpx_client_storage_lock:
+                                httpx_client_storage.clear()
+                            await download_file_write_file(download_download_url, download_file_path)
                         await downloaded.write(f"{download_file_path},{line_nr}\n")
                         await downloaded.fsync()
                         print("complete in ", time.perf_counter() - start_time)
 
-                    await tg.create_task_semaphored(download(file_path,download_url,line))
+                    await tg.create_task_semaphored(download(file_path, download_url, line))
 
 
 if __name__ == "__main__":

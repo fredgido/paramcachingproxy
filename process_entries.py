@@ -314,7 +314,7 @@ def process_activity(api_data):
 async def run():
     db_con: Connection = await asyncpg.connect(**connection_creds)
 
-    limit = 3000
+    limit = 8000
     get_statement = f"""
     SELECT id, url, "data", created_at, processed_at
     FROM public.api_dump
@@ -324,7 +324,7 @@ async def run():
         or
         url like 'https://api.twitter.com/1.1/statuses/home_timeline.json%'
     )and processed_at is null
-    order by id asc limit {3000}"""
+    order by id asc limit {limit}"""
 
     for i in range(1000000):
         start_time = time.perf_counter()

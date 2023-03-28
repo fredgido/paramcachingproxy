@@ -5,7 +5,7 @@ orjson
 pyvips # replaced with Pillow
 pillow
 
-httpx
+httpx[http2]
 uvloop
 asgiref
 aiofiles
