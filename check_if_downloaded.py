@@ -63,6 +63,7 @@ httpx_client_storage_lock = asyncio.Lock()
 #                 httpx_client_storage[current_loop] = httpx_client
 #     return httpx_client
 
+
 async def get_httpx_client() -> httpx.AsyncClient:
     current_loop = asyncio.get_running_loop()
     httpx_client = httpx_client_storage.get(current_loop)
@@ -70,32 +71,35 @@ async def get_httpx_client() -> httpx.AsyncClient:
         async with httpx_client_storage_lock:
             httpx_client = httpx_client_storage.get(current_loop)
             if not httpx_client:
-                httpx_client = (httpx.AsyncClient(
-                    timeout=61,
-                    http2=True,
-                    limits=httpx.Limits(
-                        max_connections=200,
-                        max_keepalive_connections=100,
+                httpx_client = (
+                    httpx.AsyncClient(
+                        timeout=61,
+                        http2=True,
+                        limits=httpx.Limits(
+                            max_connections=200,
+                            max_keepalive_connections=100,
+                        ),
                     ),
-                ),
-                                httpx.AsyncClient(
-                                    timeout=61,
-                                    http2=True,
-                                    limits=httpx.Limits(
-                                        max_connections=200,
-                                        max_keepalive_connections=100,
-                                    ),
-                                ),
-                                httpx.AsyncClient(
-                                    timeout=61,
-                                    http2=True,
-                                    limits=httpx.Limits(
-                                        max_connections=200,
-                                        max_keepalive_connections=100,
-                                    ),
-                                ))
+                    httpx.AsyncClient(
+                        timeout=61,
+                        http2=True,
+                        limits=httpx.Limits(
+                            max_connections=200,
+                            max_keepalive_connections=100,
+                        ),
+                    ),
+                    httpx.AsyncClient(
+                        timeout=61,
+                        http2=True,
+                        limits=httpx.Limits(
+                            max_connections=200,
+                            max_keepalive_connections=100,
+                        ),
+                    ),
+                )
                 httpx_client_storage[current_loop] = httpx_client
-    return httpx_client[random.randint(0,2)]
+    return httpx_client[random.randint(0, 2)]
+
 
 def twitter_url_to_orig(twitter_url: str):
     match = twitter_url_regex.search(twitter_url)
@@ -142,12 +146,14 @@ async def download_file_write_file(download_url: str, file_path: str | pathlib.P
     start_download = time.perf_counter()
     file_path_placeholder = str(file_path) + str(uuid.uuid4())
     async with aiofile.async_open(file_path_placeholder, "wb") as aio_file:
-    # async with aiofiles.open(file_path_placeholder, "wb") as aio_file:
+        # async with aiofiles.open(file_path_placeholder, "wb") as aio_file:
         # print(file_path.name, " open file ", time.perf_counter() - start_download)
         async with (await get_httpx_client()).stream("GET", download_url) as response:  # todo save headers
             # print(file_path.name, " open conection ", time.perf_counter() - start_download)
+            
 
-            response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE * 4*8)
+
+            response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE * 4 * 8)
 
             async def wrap_read_response_stop_iter(future) -> Optional[bytes]:
                 try:
@@ -318,15 +324,29 @@ async def main():
                         if subdomain == "video":
                             download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}.{extension}"
                         else:
-                            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}?format={extension}&name=orig"
+                            download_url = (
+                                f"https://{subdomain}.twimg.com/{url_type}/{name}?format={extension}&name=orig"
+                            )
 
                     async def download(download_file_path, download_download_url, line_nr):
                         start_time = time.perf_counter()
                         try:
                             await download_file_write_file(download_download_url, download_file_path)
-                        except (httpx.RemoteProtocolError, httpx.RequestError):
+                        # except (httpx.RemoteProtocolError, httpx.RequestError,):
+                        #     async with httpx_client_storage_lock:
+                        #         httpx_client_storage.clear()
+                        #     await download_file_write_file(download_download_url, download_file_path)
+                        # except Exception as e:
+                        #     print("error_class", e.__class__,"|||", e)
+                        #     async with httpx_client_storage_lock:
+                        #         httpx_client_storage.clear()
+                        #     raise Exception
+                        #     #await download_file_write_file(download_download_url, download_file_path)
+                        except BaseException as e:  # asyncio.exceptions.CancelledError
+                            print("base exception", e.__class__, "|||", e)
                             async with httpx_client_storage_lock:
                                 httpx_client_storage.clear()
+                            await asyncio.sleep(2)
                             await download_file_write_file(download_download_url, download_file_path)
                         await downloaded.write(f"{download_file_path},{line_nr}\n")
                         await downloaded.fsync()

@@ -8,15 +8,28 @@ from httpx import ReadTimeout
 
 from asgi import twitter_url_to_orig
 
-MEDIA_FOLDER = "/media/fredgido/p300_3tb/twitter_media/all"
+MEDIA_FOLDER = "/mnt/p300_3tb/twitter_media/all"
+trash_folder = "/mnt/p300_3tb/twitter_media/all/trash2"
+retrash = f"{MEDIA_FOLDER}/trash3_retrash"
+
 bad_images = []
 
-for file in pathlib.Path(f"{MEDIA_FOLDER}/twitter_media").glob("*"):
-    if not file.is_file():
-        continue
-    file_stat = file.stat()
-    if file_stat.st_size < 200:
+process_trash = True
+
+if not process_trash:
+    for file in pathlib.Path(f"{MEDIA_FOLDER}/twitter_media").glob("*"):
+        if not file.is_file():
+            continue
+        file_stat = file.stat()
+        if file_stat.st_size < 200:
+            bad_images.append(file.name)
+else:
+    pathlib.Path(retrash).mkdir(exist_ok=True,parents=True)
+    for file in pathlib.Path(f"{trash_folder}/twitter_media").glob("**/**/*"):
+        if not file.is_file():
+            continue
         bad_images.append(file.name)
+
 
 print(bad_images)
 
@@ -34,15 +47,24 @@ for image, files in base_image_name__bad_images.items():
     if image not in files and pathlib.Path(f"{MEDIA_FOLDER}/twitter_media/{image}").exists(): # good image exists
         print("exists", image)
         import shutil
-        shutil.copy(f"{MEDIA_FOLDER}/twitter_media/{image}", f"{MEDIA_FOLDER}/temp/{image}")
+
+
+        if pathlib.Path(f"{MEDIA_FOLDER}/twitter_media/{image}").exists():
+            shutil.copy(f"{MEDIA_FOLDER}/twitter_media/{image}", f"{retrash}/{image}")
+        elif pathlib.Path(f"{trash_folder}/twitter_media/{image}").exists():
+            os.rename(f"{trash_folder}/twitter_media/{image}", f"{retrash}/{image}")
         for each in files:
-            os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{MEDIA_FOLDER}/trash/{each}")
+            if pathlib.Path(f"{MEDIA_FOLDER}/twitter_media/{each}").exists():
+                os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{retrash}/{each}")
+            elif pathlib.Path(f"{trash_folder}/twitter_media/{each}").exists():
+                os.rename(f"{trash_folder}/twitter_media/{each}", f"{retrash}/{each}")
         continue
 
     if "mp4" in image:
         download_url = f"https://video.twimg.com/tweet_video/{image}"
     else:
         download_url = f"https://pbs.twimg.com/media/{image}:orig"
+
 
     try:
         r = httpx.get(download_url,timeout=30)
@@ -54,7 +76,11 @@ for image, files in base_image_name__bad_images.items():
         print("  valid", download_url, f"{name}.{extension}")
 
         for each in files:
-            os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{MEDIA_FOLDER}/trash/{each}")
+            if pathlib.Path(f"{MEDIA_FOLDER}/twitter_media/{each}").exists():
+                os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{retrash}/{each}")
+            if pathlib.Path(f"{trash_folder}/twitter_media/{each}").exists():
+                os.rename(f"{trash_folder}/twitter_media/{each}", f"{retrash}/{each}")
+
         open(f"{MEDIA_FOLDER}/twitter_media/{name}.{extension}", "wb").write(r.content)
 
     else:
@@ -73,6 +99,15 @@ for image, files in base_image_name__bad_images.items():
             print("R valid", download_url, f"{name}.{extension}")
             open(f"{MEDIA_FOLDER}/twitter_media/{name}.{extension}", "wb").write(r.content)
             for each in files:
-                os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{MEDIA_FOLDER}/trash/{each}")
+                if pathlib.Path(f"{MEDIA_FOLDER}/twitter_media/{each}").exists():
+                    os.rename(f"{MEDIA_FOLDER}/twitter_media/{each}", f"{retrash}/{each}")
+                elif pathlib.Path(f"{trash_folder}/twitter_media/{each}").exists():
+                    os.rename(f"{trash_folder}/twitter_media/{each}", f"{retrash}/{each}")
         else:
             print("invalid second try", r.status_code, download_url)
+            if process_trash:
+                if pathlib.Path(f"{trash_folder}/twitter_media/{image}").exists():
+                    os.rename(f"{trash_folder}/twitter_media/{image}", f"{retrash}/{image}")
+                else:
+                    for each_glob in pathlib.Path(f"{trash_folder}/twitter_media").glob(f"{image}*"):
+                        os.rename(each_glob, f"{retrash}/{each_glob.name}")

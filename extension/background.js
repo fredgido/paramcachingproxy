@@ -93,7 +93,9 @@ browser.browserAction.onClicked.addListener(function (tab) {
 
 
 browser.webRequest.onHeadersReceived.addListener(onHeadersReceived, {
-    urls: ["*://twitter.com/*", "*://mobile.twitter.com/*", "*://tweetdeck.twitter.com/*", //'*://*/*'
+    urls: [
+        //"*://twitter.com/*", "*://mobile.twitter.com/*", "*://tweetdeck.twitter.com/*",
+        '*://*/*'
     ]
 }, ['blocking', 'responseHeaders']);
 activateListeners();

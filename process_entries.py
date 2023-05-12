@@ -80,7 +80,9 @@ def twitter_video_url_to_orig(twitter_url: str):
 def extract_assets_data(entry, tweet_id: int) -> list[dict]:
     media = list[dict]()
     if "extended_entities" not in entry:
-        return media
+        if "extended_entities" not in entry.get("legacy", tuple()):
+            return media
+        entry = entry["legacy"]
     for asset in entry["extended_entities"]["media"]:
         if asset["type"] in ("photo", "animated_gif"):
             subdomain, url_type, name, extension = twitter_url_to_orig(asset["media_url_https"])
@@ -88,8 +90,10 @@ def extract_assets_data(entry, tweet_id: int) -> list[dict]:
                 raise Exception("no name")
             if not asset.get("source_status_id_str"):
                 post_id_from_url = int(asset["expanded_url"].split("/")[5])
-                if post_id_from_url != tweet_id:
-                    raise Exception("Different id")
+                if str(post_id_from_url) != entry["id_str"]:
+                    # raise Exception("Different id")
+                    print("Different id for post and media", post_id_from_url, entry["id"], tweet_id)
+                    continue
             else:
                 tweet_id = int(asset["source_status_id_str"])
             media_asset = {
@@ -148,7 +152,7 @@ def extract_users_data_legacy(entry) -> list[dict]:
                 [u.get("expanded_url", u.get("url")) for u in entry["user"]["entities"].get("url", {}).get("urls", [])]
                 + [u.get("expanded_url", u.get("url")) for u in entry["user"]["entities"]["description"]["urls"]]
             ),
-            "protected": entry["user"]["protected"],
+            "protected": entry["user"].get("protected") or False,
             "followers_count": entry["user"]["followers_count"],
             "friends_count": entry["user"]["friends_count"],
             "listed_count": entry["user"]["listed_count"],
@@ -176,6 +180,10 @@ def process_data_url(api_data, url: str):
     elif url.startswith("https://api.twitter.com/1.1/activity/by_friends.json"):
         return process_data_legacy(api_data)
     elif fnmatch.fnmatch(url, "https://api.twitter.com/graphql/*/HomeTimeline*"):
+        return process_timeline_data(api_data)
+    elif fnmatch.fnmatch(url, "https://twitter.com/i/api/graphql/*/HomeTimeline*"):
+        return process_timeline_data(api_data)
+    elif fnmatch.fnmatch(url, "https://tweetdeck.twitter.com/i/api/graphql/*/HomeTimeline*"):
         return process_timeline_data(api_data)
     else:
         raise Exception
@@ -234,9 +242,12 @@ def process_timeline_data(data):
             assets_data = extract_assets_data(quotetweet.get("legacy"), int(quotetweet["id"]))
             for asset_data in assets_data:
                 assets_parsed[(asset_data["name"], asset_data["extension"])] = asset_data
-            users_data = extract_users_data_timeline(quotetweet["core"]["user_results"]["result"])
-            for user_data in users_data:
-                users_parsed[int(user_data["id"])] = user_data
+            if quotetweet["core"]["user_results"].get("result"):
+                users_data = extract_users_data_timeline(quotetweet["core"]["user_results"]["result"])
+                for user_data in users_data:
+                    users_parsed[int(user_data["id"])] = user_data
+            else:
+                print("missing users_data in quote")
 
         if tweet.get("retweeted_status_result"):
             raise Exception
@@ -248,9 +259,12 @@ def process_timeline_data(data):
             assets_data = extract_assets_data(retweet.get("legacy"), int(retweet["id"]))
             for asset_data in assets_data:
                 assets_parsed[(asset_data["name"], asset_data["extension"])] = asset_data
-            users_data = extract_users_data_timeline(tweet["core"]["user_results"]["result"])
-            for user_data in users_data:
-                users_parsed[int(user_data["id"])] = user_data
+            if retweet["core"]["user_results"].get("result"):
+                users_data = extract_users_data_timeline(retweet["core"]["user_results"]["result"])
+                for user_data in users_data:
+                    users_parsed[int(user_data["id"])] = user_data
+            else:
+                print("missing users_data in retweet")
     return tweets_parsed, assets_parsed, users_parsed
 
 
@@ -314,7 +328,8 @@ def process_activity(api_data):
 async def run():
     db_con: Connection = await asyncpg.connect(**connection_creds)
 
-    limit = 8000
+    last_id = 0
+    limit = 50000
     get_statement = f"""
     SELECT id, url, "data", created_at, processed_at
     FROM public.api_dump
@@ -323,8 +338,13 @@ async def run():
         url like 'https://api.twitter.com/graphql/%/HomeTimeline%'
         or
         url like 'https://api.twitter.com/1.1/statuses/home_timeline.json%'
-    )and processed_at is null
-    order by id asc limit {limit}"""
+        or
+        url like 'https://twitter.com/i/api/graphql/%/HomeTimeline%'
+        or
+        url like 'https://tweetdeck.twitter.com/i/api/graphql/%/HomeTimeline%'
+    )and processed_at is null and id > $1
+    order by id asc
+    limit {limit}"""
 
     for i in range(1000000):
         start_time = time.perf_counter()
@@ -333,7 +353,7 @@ async def run():
         insert_users = dict()
         row_ids = list()
 
-        rows = await db_con.fetch(get_statement)
+        rows = await db_con.fetch(get_statement, last_id)
         print(time.perf_counter() - start_time, " seconds to fetch")
         fetch_end = time.perf_counter()
         for row in rows:
@@ -346,11 +366,13 @@ async def run():
                 print("bad id of dump ", api_dump_id)
                 continue
             row_ids.append(api_dump_id)
-            try:
-                tweets, assets, users = process_data_url(parsed_data, url)
-            except Exception:
-                print("fail parse ", api_dump_id)
-                continue
+            tweets, assets, users = process_data_url(parsed_data, url)
+
+            # try:
+            #     tweets, assets, users = process_data_url(parsed_data, url)
+            # except Exception as e:
+            #     print("fail parse ", api_dump_id)
+            #     continue
 
             for user in users.values():
                 user["processed_at"] = created_at
@@ -386,9 +408,11 @@ async def run():
         print(time.perf_counter() - process_end, " seconds to save")
         print(time.perf_counter() - start_time, f" seconds for {limit}")
 
+        last_id = row_ids[-1] if row_ids else last_id
         if len(rows) < limit / 2:
-            print("sleeping 60 sec")
-            time.sleep(60)
+            sleep_time = 10
+            print(f"sleeping {10} sec")
+            time.sleep(10)
         print(i)
     await db_con.close()
 

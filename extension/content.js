@@ -32,8 +32,11 @@ const pageScript = `
 		function onXhrLoad(e) {
 			let xhr = e.target;
 			let url = new URL(xhr.responseURL);
+            console.log(url);
+            console.log(xhr.responseURL);
 
-			if (url.origin === 'https://api.twitter.com') {
+			if (url.origin === 'https://api.twitter.com' ||  ((url.origin === 'https://twitter.com' || url.origin === 'https://tweetdeck.twitter.com') && url.pathname.startsWith('/i/api') ) ) {
+				console.log(url.origin,url.pathname, "accepted");
 				queueMicrotask(() => handleApiResponse(xhr));
 			}
 		}

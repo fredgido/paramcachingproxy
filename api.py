@@ -42,7 +42,7 @@ select_recent_assets = """
 select post_id
 FROM public.asset
 order by processed_at  desc
-limit 2000
+limit 1000
 """
 
 @dataclass
