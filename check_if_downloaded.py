@@ -23,7 +23,9 @@ import uvicorn
 from asgiref.typing import HTTPScope
 import h2.events
 
+import handle_keyboard_interrupt
 from aio_safe_rename import aio_safe_rename
+from disk_cache import async_add_to_cache, async_exists_in_cache
 
 CoroutineFunction = Callable[[Union[dict, type(None)]], Awaitable]
 
@@ -145,12 +147,19 @@ CHUNK_SIZE = int(65536)
 async def download_file_write_file(download_url: str, file_path: str | pathlib.Path):
     start_download = time.perf_counter()
     file_path_placeholder = str(file_path) + str(uuid.uuid4())
-    async with aiofile.async_open(file_path_placeholder, "wb") as aio_file:
+    async with (await get_httpx_client()).stream("GET", download_url) as response:  # todo save headers
+        if response.status_code != 200:
+            if response.status_code in (404,403):
+                print("fail", response.status_code,download_url)
+                await async_add_to_cache("missing_files_remote",download_url)
+                return
+            print(f"unkown status code {response.status_code}")
+            return
         # async with aiofiles.open(file_path_placeholder, "wb") as aio_file:
         # print(file_path.name, " open file ", time.perf_counter() - start_download)
-        async with (await get_httpx_client()).stream("GET", download_url) as response:  # todo save headers
+        async with aiofile.async_open(file_path_placeholder, "wb") as aio_file:
             # print(file_path.name, " open conection ", time.perf_counter() - start_download)
-            
+
 
 
             response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE * 4 * 8)
@@ -275,10 +284,14 @@ class TaskGroupWithSemaphore(asyncio.TaskGroup):
 
 async def main():
     async with aiofile.AIOFile(f"temp/downloaded_{datetime.datetime.utcnow().isoformat()}.txt", "a") as downloaded:
-        async with aiofile.AIOFile("temp/asset_urls3.csv", "r") as f:
+        async with aiofile.AIOFile("temp/asset_urls5.csv", "r") as f:
             async with TaskGroupWithSemaphore(5) as tg:
                 last_line_time = time.perf_counter()
                 async for line in CustomLineReader(f, chunk_size=aiofile.LineReader.CHUNK_SIZE * 16):
+                    # print("keyboard ",handle_keyboard_interrupt.mutable["is_requested"])
+                    if handle_keyboard_interrupt.mutable["is_requested"]:
+                        break
+
                     # print("line_time", time.perf_counter() - last_line_time)
                     last_line_time = time.perf_counter()
                     line: str = line.strip()
@@ -352,8 +365,13 @@ async def main():
                         await downloaded.fsync()
                         print("complete in ", time.perf_counter() - start_time)
 
+                    m = await async_exists_in_cache("missing_files_remote", download_url)
+                    if m:
+                        print("skip cache")
+                        continue
                     await tg.create_task_semaphored(download(file_path, download_url, line))
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+    print("end", handle_keyboard_interrupt.mutable["is_requested"])

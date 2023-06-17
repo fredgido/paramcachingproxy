@@ -366,7 +366,11 @@ async def run():
                 print("bad id of dump ", api_dump_id)
                 continue
             row_ids.append(api_dump_id)
-            tweets, assets, users = process_data_url(parsed_data, url)
+            try:
+                tweets, assets, users = process_data_url(parsed_data, url)
+            except Exception as e:
+                print("error procesing " + str(e) )
+                continue
 
             # try:
             #     tweets, assets, users = process_data_url(parsed_data, url)
