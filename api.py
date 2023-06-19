@@ -1,10 +1,12 @@
 import asyncio
 import datetime
+import os
 import time
 import urllib.parse
 from asyncio import AbstractEventLoop
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
+from dateutil.parser import parse
 
 import asyncpg
 import orjson
@@ -17,9 +19,10 @@ from pg_connection_creds import connection_creds
 select_statement = """
 select json_agg(post_and_assets)
 from (
-SELECT json_build_object('post',row_to_json(p),'assets',json_agg(row_to_json(a))) as post_and_assets
+SELECT json_build_object('post',row_to_json(p),'assets',json_agg(row_to_json(a)),'user',json_agg(row_to_json(u))) as post_and_assets
 FROM public.post p
-left join public.asset a on p.id =a.post_id 
+left join public.asset a on p.id = a.post_id 
+left join public."user" u on p.user_id = u.id 
 where p.id = any($1::int8[])
 group by p.id 
 having count(a.id) >0
@@ -44,6 +47,7 @@ FROM public.asset
 order by processed_at  desc
 limit 1000
 """
+
 
 @dataclass
 class Connection:
@@ -79,13 +83,6 @@ ReceiveType = Callable[[], Awaitable]
 SendType = Callable[[dict], Awaitable]
 
 
-@dataclass
-class Connection:
-    scope: HTTPScope
-    receive: ReceiveType
-    send: SendType
-    log_info: dict
-
 
 class App:
     async def __call__(self, scope: HTTPScope, receive: ReceiveType, send: SendType):
@@ -111,9 +108,16 @@ class App:
             )
             print("OPTIONS", scope["query_string"])
             return
-        # r = await receive()  # this is nothing
 
-        connection = Connection(scope, receive, send, dict())
+        body = b""
+        data = await receive()
+        body += data["body"]
+        while data["more_body"]:
+            data = await receive()
+            # print(data, url)
+            body += data["body"]
+
+        connection = Connection(scope, receive, send, body, dict())
 
         # routes
         if scope["path"].startswith("/tweet"):
@@ -129,15 +133,89 @@ class App:
         connection.log_info["chunks_size"] = 0
         connection.log_info["chunks_times"] = []
         connection.log_info["start_time"] = time.perf_counter()
-        query: dict[bytes, list[bytes]] = urllib.parse.parse_qs(connection.scope["query_string"])
+        query: dict[str, list[str]] = urllib.parse.parse_qs(connection.scope["query_string"].decode())  # noqa
+        post_object: dict[str, str] = orjson.loads(connection.request_body) if connection.request_body else {}
+
+        squashed_query_object: dict[str, str] = {k: v[0] for k, v in query.items()}
+
+        filter_object: dict[str, str] = {**squashed_query_object, **post_object}
+
+        strtobool = lambda x: bool(x and x[0].lower() in ("y", "t", "o", "1"))
+        int_id_comma = lambda x: ([int(x_) for x_ in x.split(",")] if isinstance(x,str) else [x] )
+        str_comma = lambda x: [str(x_) for x_ in x.split(",")]
+        parse_timestamp = lambda x: parse(x)
+
+        def solve_range(range_str):
+            parts = range_str.split("..")
+            start = None if not parts[0] else int(parts[0])
+            end = None if not parts[1] else int(parts[1])
+            return start, end
+
+        sql_conditions_base = {
+            "search[id]": ("p.id = any($N::int8[])", int_id_comma),
+            "search[user]": ("p.user = any($N::int8[])", int_id_comma),
+            "search[user_id]": ("p.user = any($N::int8[])", int_id_comma),
+            "search[user_handle]": ("u.screen_name = any($N::text[])", str_comma),
+            "search[body]": ("p.full_text ilike $N ", lambda x: f"%{x}%"),
+            "search[hashtags]": ("p.user = any($N::int8[])", str_comma),
+            "search[mentions]": ("p.user = any($N::int8[])", int_id_comma),
+            "search[mentions_handle]": ("p.user = any($N::int8[])", str_comma),
+            "search[urls]": ("p.user = any($N::int8[])", str_comma),
+            "search[start_timestamp]": ("p.user = any($N::int8[])", parse_timestamp),
+            "search[end_timestamp]": ("p.user = any($N::int8[])", parse_timestamp),
+            "search[retweets]": ("p.user = any($N::int8[])", solve_range),
+            "search[favorites]": ("p.user = any($N::int8[])", solve_range),
+            "search[replies]": ("p.user = any($N::int8[])", solve_range),
+            "search[views]": ("p.user = any($N::int8[])", solve_range),
+            "search[is_quote_tweet]": ("p.user = any($N::int8[])", strtobool),
+            "search[is_retweet]": ("p.is_retweet = any($N::int8[])", strtobool),
+            "search[has_images]": ("p.user = any($N::int8[])", strtobool),
+            "search[has_videos]": ("p.user = any($N::int8[])", strtobool),
+        }
+        sql_conditions = ""
+        sql_params = []
+        """
+        search[id] search[user] search[body] search[hashtags] search[mentions] search[urls] search[timestamp] search[retweets] search[favorites] search[replies] search[views] search[is_quote_tweet] search[is_retweet] search[has_images] search[has_videos]
+        """
+
+        for sql_filter_key, sql_filter_value in filter_object.items():
+            condition_str, arg_parser = sql_conditions_base[sql_filter_key]
+            sql_conditions += " AND " + condition_str.replace("$N", f"${len(sql_params)+1}")
+            sql_params.append(arg_parser(sql_filter_value))
+
+        base_query = """
+SELECT p.id
+FROM public.post p
+left join public.asset a on p.id =a.post_id 
+where true
+"""
+        if "search[user_handle]" in sql_conditions_base or "search[mentions_handle]" in sql_conditions_base:
+            base_query = "\n".join(
+                base_query.split("\n")[0:3]
+                + ['left join public."user" u on p.user_id = u.id ']
+                + base_query.split("\n")[3:]
+            )
+
+        built_query = base_query + sql_conditions + " order by id desc" + " limit 1000 "
+        pool = await get_pg_connection_pool()
+        async with pool.acquire() as db_con:
+            db_con: APGConnection
+            values = await db_con.fetch(built_query, *sql_params)
+            print(values)
+            values = await db_con.fetch(select_statement, [value.get("id") for value in values])
+
+            if values and values[0][0]:
+                return await cls.return_json(connection, values[0][0].encode())
+            else:
+                return await cls.return_json(connection, {"error": "not found"}, status_code=404)
 
         if not query:
             print(query, "failed")
             return await cls.return_json(connection, {"error": "Missing query param"})
 
-        if b"id" in query:
-            ids = query.get(b"id")
-            ids = [int(post_id) for post_id in (b",".join(ids)).decode().split(",")]
+        if "id" in query:
+            ids = query.get("id")
+            ids = [int(post_id) for post_id in (",".join(ids)).decode().split(",")]
 
             pool = await get_pg_connection_pool()
             async with pool.acquire() as db_con:
@@ -149,7 +227,7 @@ class App:
             else:
                 return await cls.return_json(connection, {"error": "not found"}, status_code=404)
 
-        if b"recent" in query:
+        if "recent" in query:
             pool = await get_pg_connection_pool()
             async with pool.acquire() as db_con:
                 db_con: APGConnection
@@ -160,6 +238,7 @@ class App:
                 return await cls.return_json(connection, values[0][0].encode())
             else:
                 return await cls.return_json(connection, {"error": "not found"}, status_code=404)
+
         return await cls.return_json(connection, {"error": "unknown query param"})
 
     @staticmethod
@@ -208,7 +287,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "api:App",
         host="0.0.0.0",
-        port=7037,
+        port=int(os.getenv("PORT")) if os.getenv("PORT") else 7037,
         log_level="info",
         # log_level="critical",
         loop="uvloop",
