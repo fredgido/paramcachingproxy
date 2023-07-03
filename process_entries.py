@@ -328,7 +328,7 @@ def process_activity(api_data):
 async def run():
     db_con: Connection = await asyncpg.connect(**connection_creds)
 
-    last_id = 0
+    last_id = 14272413
     limit = 50000
     get_statement = f"""
     SELECT id, url, "data", created_at, processed_at
@@ -366,6 +366,10 @@ async def run():
                 print("bad id of dump ", api_dump_id)
                 continue
             row_ids.append(api_dump_id)
+
+            if "errors" in parsed_data and parsed_data["errors"] and parsed_data["errors"][0]["code"] == 88:
+                print(parsed_data["errors"][0]["message"])
+                continue
             try:
                 tweets, assets, users = process_data_url(parsed_data, url)
             except Exception as e:
@@ -393,21 +397,26 @@ async def run():
         print(time.perf_counter() - fetch_end, " seconds to process")
         process_end = time.perf_counter()
 
-        values = await db_con.executemany(
-            post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
-        )
-        print(values)
-        values = await db_con.executemany(
-            asset_insert_statement, [[asset[var] for var in asset_vars] for asset in insert_assets.values()]
-        )
-        print(values)
-        values = await db_con.executemany(
-            user_insert_statement, [[user[var] for var in user_vars] for user in insert_users.values()]
-        )
-        print(values)
+        try:
+            values = await db_con.executemany(
+                post_insert_statement, [[tweet[var] for var in post_vars] for tweet in insert_tweets.values()]
+            )
+            print(values)
+            values = await db_con.executemany(
+                asset_insert_statement, [[asset[var] for var in asset_vars] for asset in insert_assets.values()]
+            )
+            print(values)
+            values = await db_con.executemany(
+                user_insert_statement, [[user[var] for var in user_vars] for user in insert_users.values()]
+            )
+            print(values)
 
-        values = await db_con.execute(api_dump_update_processed, row_ids, datetime.datetime.utcnow())
-        print(values)
+            values = await db_con.execute(api_dump_update_processed, row_ids, datetime.datetime.utcnow())
+            print(values)
+        except Exception as e:
+            print("Exception, skipping chunk", e)
+            last_id += 1
+            continue
 
         print(time.perf_counter() - process_end, " seconds to save")
         print(time.perf_counter() - start_time, f" seconds for {limit}")
