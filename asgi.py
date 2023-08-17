@@ -47,7 +47,9 @@ def aiowrap(func):
 
     return run
 
+
 aio_safe_rename = aiowrap(renameat2.rename)
+
 
 def twitter_url_to_orig(twitter_url: str):
     match = twitter_url_regex.search(twitter_url)
@@ -62,6 +64,7 @@ ext_content_type = {
     "gif": b"image/gif",
     "jpeg": b"image/jpeg",
     "jpg": b"image/jpeg",
+    "webp": b"image/jpeg",
     "png": b"image/png",
     "mp4": b"video/mp4",
 }
@@ -177,6 +180,12 @@ class App:
         url = url_params[0].decode()
         connection.log_info["url"] = url
         subdomain, url_type, name, extension = twitter_url_to_orig(url)
+        if extension == "webp":
+            print("webp")
+            connection.log_info["webp_sample"] = True
+            extensions = ["jpg", "png", "gif"]
+        else:
+            extensions = [extension]
         connection.log_info["url_type"] = url_type
         connection.log_info["name"] = name
         connection.log_info["extension"] = extension
@@ -185,21 +194,24 @@ class App:
             print(query, "failed")
             return await self.return_text(connection, b"Not Found")
 
-        file_name = f"{name}.{extension}"
-        file_path = twitter_media_path / file_name
-        if file_path.exists():
-            connection.log_info["file_exists"] = True
-            await self.send_file(connection, extension, file_path)
-            connection.log_info["end_time"] = time.perf_counter() - connection.log_info["start_time"]
-            print(connection.log_info)
-            return
+        for ext in extensions:
+            file_path = twitter_media_path / f"{name}.{ext}"
+            if file_path.exists():
+                connection.log_info["file_exists"] = True
+                await self.send_file(connection, ext, file_path)
+                connection.log_info["end_time"] = time.perf_counter() - connection.log_info["start_time"]
+                print(connection.log_info)
+                return
 
-        if subdomain == "video":
-            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}.{extension}"
-        else:
-            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}?format={extension}&name=orig"
-        print(download_url)
-        await self.download_file_write_file_send_file(connection, download_url, file_path)
+        for ext in extensions:
+            file_path = twitter_media_path / f"{name}.{ext}"
+            if subdomain == "video":
+                download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}.{ext}"
+            else:
+                download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}?format={ext}&name=orig"
+            connection.log_info["download_url"] = download_url
+            if await self.download_file_write_file_send_file(connection, download_url, file_path):
+                break
         connection.log_info["file_exists"] = False
         connection.log_info["end_time"] = time.perf_counter() - connection.log_info["start_time"]
         # print(connection.log_info)
@@ -221,6 +233,7 @@ class App:
             }
         )
         async with aiofiles.open(file_path, "rb") as aio_file:
+            print("return existing", file_path)
             first_chunk_future = aio_file.read(CHUNK_SIZE)
             chunk, header_send_result = await asyncio.gather(first_chunk_future, header_send_future)
             connection.log_info["header_first_chunk_time"] = time.perf_counter() - connection.log_info["start_time"]
@@ -304,16 +317,21 @@ class App:
             await aio_safe_rename(file_path_placeholder, file_path, replace=False)
         except FileExistsError as e:
             print("failed renameat2")
-        #await aiofiles.os.rename(file_path_placeholder, file_path)
+        # await aiofiles.os.rename(file_path_placeholder, file_path)
         connection.log_info["rename_time"] = time.perf_counter() - connection.log_info["start_time"]
 
     async def download_file_write_file_send_file(
         self, connection: Connection, download_url: str, file_path: str | pathlib.Path
-    ):
+    )-> bool:
         file_path_placeholder = str(file_path) + str(uuid.uuid4())
         connection.log_info["download_start_time"] = time.perf_counter() - connection.log_info["start_time"]
-        async with aiofiles.open(file_path_placeholder, "wb") as aio_file:
-            async with client.stream("GET", download_url) as response:  # todo save headers
+        async with client.stream("GET", download_url) as response:  # todo save headers
+            print(response.__dict__)
+            connection.log_info["download_status_code"] = response.status_code
+            if response.status_code == 404:
+                await response.aread()
+                return False
+            async with aiofiles.open(file_path_placeholder, "wb") as aio_file:
                 connection.log_info["response_time"] = time.perf_counter() - connection.log_info["start_time"]
                 response_iterator = response.aiter_bytes(chunk_size=CHUNK_SIZE)
 
@@ -374,7 +392,7 @@ class App:
             print("failed renameat2")
         # await aiofiles.os.rename(file_path_placeholder, file_path)
         connection.log_info["rename_time"] = time.perf_counter() - connection.log_info["start_time"]
-
+        return True
 
 if __name__ == "__main__":
     uvicorn.run(
