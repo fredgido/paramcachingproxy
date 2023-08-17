@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import inspect
 import os
 import time
 import urllib.parse
@@ -26,6 +27,7 @@ left join public."user" u on p.user_id = u.id
 where p.id = any($1::int8[])
 group by p.id 
 having count(a.id) >0
+order by p.id desc
 ) as post_assets_json_query
 """
 
@@ -83,7 +85,6 @@ ReceiveType = Callable[[], Awaitable]
 SendType = Callable[[dict], Awaitable]
 
 
-
 class App:
     async def __call__(self, scope: HTTPScope, receive: ReceiveType, send: SendType):
         assert scope["type"] == "http"
@@ -136,14 +137,33 @@ class App:
         query: dict[str, list[str]] = urllib.parse.parse_qs(connection.scope["query_string"].decode())  # noqa
         post_object: dict[str, str] = orjson.loads(connection.request_body) if connection.request_body else {}
 
+        print(connection.request_body.decode())
+        print(query)
         squashed_query_object: dict[str, str] = {k: v[0] for k, v in query.items()}
 
         filter_object: dict[str, str] = {**squashed_query_object, **post_object}
 
-        strtobool = lambda x: bool(x and x[0].lower() in ("y", "t", "o", "1"))
-        int_id_comma = lambda x: ([int(x_) for x_ in x.split(",")] if isinstance(x,str) else [x] )
-        str_comma = lambda x: [str(x_) for x_ in x.split(",")]
-        parse_timestamp = lambda x: parse(x)
+        strtobool = lambda x: [not (x and x[0].lower() in ("y", "t", "o", "1"))]
+        int_id_comma = lambda x: [([int(x_) for x_ in x.split(",")] if isinstance(x, str) else [x])]
+        str_comma = lambda x: [[str(x_) for x_ in x.split(",")]]
+        parse_timestamp = lambda x: [parse(x)]
+
+        async def handle_or_id_to_id(x: str):
+            int_ids = [int(x_) for x_ in x.split(",") if x_.isdigit()]
+            handles = [x_.lower() for x_ in x.split(",") if not x_.isdigit()]
+            if not handles:
+                return int_ids
+            local_pool = await get_pg_connection_pool()
+            async with local_pool.acquire() as local_db_con:
+                local_db_con: APGConnection
+                local_values = await local_db_con.fetch(
+                    """select u.id from public."user" u where lower(u.screen_name) = any($1::text[]) or u.id = any($2::int8[])""",
+                    handles,
+                    int_ids,
+                )
+
+                print(local_values)
+                return [list(set([v["id"] for v in local_values] + int_ids))]
 
         def solve_range(range_str):
             parts = range_str.split("..")
@@ -153,8 +173,8 @@ class App:
 
         sql_conditions_base = {
             "search[id]": ("p.id = any($N::int8[])", int_id_comma),
-            "search[user]": ("p.user = any($N::int8[])", int_id_comma),
-            "search[user_id]": ("p.user = any($N::int8[])", int_id_comma),
+            "search[user]": ("p.user_id = any($N::int8[])", handle_or_id_to_id),
+            "search[user_id]": ("p.user_id = any($N::int8[])", int_id_comma),
             "search[user_handle]": ("u.screen_name = any($N::text[])", str_comma),
             "search[body]": ("p.full_text ilike $N ", lambda x: f"%{x}%"),
             "search[hashtags]": ("p.user = any($N::int8[])", str_comma),
@@ -164,12 +184,12 @@ class App:
             "search[start_timestamp]": ("p.user = any($N::int8[])", parse_timestamp),
             "search[end_timestamp]": ("p.user = any($N::int8[])", parse_timestamp),
             "search[retweets]": ("p.user = any($N::int8[])", solve_range),
-            "search[favorites]": ("p.user = any($N::int8[])", solve_range),
+            "search[favorites]": (["p.favorite_count > $N::int8","p.favorite_count < $N::int8"], solve_range),
             "search[replies]": ("p.user = any($N::int8[])", solve_range),
             "search[views]": ("p.user = any($N::int8[])", solve_range),
             "search[is_quote_tweet]": ("p.user = any($N::int8[])", strtobool),
             "search[is_retweet]": ("p.is_retweet = any($N::int8[])", strtobool),
-            "search[has_images]": ("p.user = any($N::int8[])", strtobool),
+            "search[has_images]": ("a.id is null = $N", strtobool),
             "search[has_videos]": ("p.user = any($N::int8[])", strtobool),
         }
         sql_conditions = ""
@@ -178,10 +198,22 @@ class App:
         search[id] search[user] search[body] search[hashtags] search[mentions] search[urls] search[timestamp] search[retweets] search[favorites] search[replies] search[views] search[is_quote_tweet] search[is_retweet] search[has_images] search[has_videos]
         """
 
+        param_n = 0
         for sql_filter_key, sql_filter_value in filter_object.items():
-            condition_str, arg_parser = sql_conditions_base[sql_filter_key]
-            sql_conditions += " AND " + condition_str.replace("$N", f"${len(sql_params)+1}")
-            sql_params.append(arg_parser(sql_filter_value))
+            condition_strs, arg_parser = sql_conditions_base[sql_filter_key]
+            condition_strs = [condition_strs] if isinstance(condition_strs,str) else condition_strs
+            if inspect.iscoroutinefunction(arg_parser):
+                args_parsed = await arg_parser(sql_filter_value)
+            else:
+                args_parsed =  arg_parser(sql_filter_value)
+            for condition_str, arg_parsed in zip(condition_strs,args_parsed):
+                if arg_parsed is  None:
+                    continue
+                sql_params.append(arg_parsed)
+                param_n +=1
+                sql_conditions += " AND " + condition_str.replace("$N", f"${param_n}")
+
+        print("22222222")
 
         base_query = """
 SELECT p.id
@@ -189,21 +221,26 @@ FROM public.post p
 left join public.asset a on p.id =a.post_id 
 where true
 """
-        if "search[user_handle]" in sql_conditions_base or "search[mentions_handle]" in sql_conditions_base:
+        if "search[user_handle]" in filter_object or "search[mentions_handle]" in filter_object:
             base_query = "\n".join(
                 base_query.split("\n")[0:3]
                 + ['left join public."user" u on p.user_id = u.id ']
                 + base_query.split("\n")[3:]
             )
-
+        print("111111111")
         built_query = base_query + sql_conditions + " order by id desc" + " limit 1000 "
         pool = await get_pg_connection_pool()
         async with pool.acquire() as db_con:
             db_con: APGConnection
+            print("starting query ids")
+            print(built_query, sql_params)
             values = await db_con.fetch(built_query, *sql_params)
+            print("starting query full")
             print(values)
             values = await db_con.fetch(select_statement, [value.get("id") for value in values])
 
+            print("result")
+            print(values)
             if values and values[0][0]:
                 return await cls.return_json(connection, values[0][0].encode())
             else:
