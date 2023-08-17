@@ -284,7 +284,7 @@ class TaskGroupWithSemaphore(asyncio.TaskGroup):
 
 async def main():
     async with aiofile.AIOFile(f"temp/downloaded_{datetime.datetime.utcnow().isoformat()}.txt", "a") as downloaded:
-        async with aiofile.AIOFile("temp/asset_urls5.csv", "r") as f:
+        async with aiofile.AIOFile("temp/asset_urls6.csv", "r") as f:
             async with TaskGroupWithSemaphore(5) as tg:
                 last_line_time = time.perf_counter()
                 async for line in CustomLineReader(f, chunk_size=aiofile.LineReader.CHUNK_SIZE * 16):
@@ -319,6 +319,18 @@ async def main():
                     # if "tweet_video_thumb" in line:
                     #     print("skip thumb")
 
+                    if url_type == "ext_tw_video":
+                        download_url = f"https://{subdomain}.twimg.com/{url_type}/{video_id}/{pu}vid/{resolution}/{name}.{extension}"
+                        continue
+                    else:
+                        if subdomain == "video":
+                            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}.{extension}"
+                            continue
+                        else:
+                            download_url = (
+                                f"https://{subdomain}.twimg.com/{url_type}/{name}?format={extension}&name=orig"
+                            )
+
                     file_name = f"{name}.{extension}"
                     file_path = twitter_media_path / file_name
 
@@ -330,16 +342,6 @@ async def main():
                         continue
                     # print("exist_check", time.perf_counter() - start)
                     print("doesn't exist", line)
-
-                    if url_type == "ext_tw_video":
-                        download_url = f"https://{subdomain}.twimg.com/{url_type}/{video_id}/{pu}vid/{resolution}/{name}.{extension}"
-                    else:
-                        if subdomain == "video":
-                            download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}.{extension}"
-                        else:
-                            download_url = (
-                                f"https://{subdomain}.twimg.com/{url_type}/{name}?format={extension}&name=orig"
-                            )
 
                     async def download(download_file_path, download_download_url, line_nr):
                         start_time = time.perf_counter()

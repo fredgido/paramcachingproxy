@@ -144,7 +144,7 @@ def extract_users_data_legacy(entry) -> list[dict]:
         {
             "id": int(entry["user"]["rest_id"]) if entry["user"].get("rest_id") else int(entry["user"]["id_str"]),
             "created_at": parse(entry["user"]["created_at"]),
-            "name": entry["user"]["name"],
+            "name": entry["user"]["name"].replace("\x00",""),
             "screen_name": entry["user"]["screen_name"],
             "location": entry["user"]["location"],
             "description": entry["user"]["description"],

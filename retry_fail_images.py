@@ -9,12 +9,13 @@ from httpx import ReadTimeout
 from asgi import twitter_url_to_orig
 
 MEDIA_FOLDER = "/mnt/p300_3tb/twitter_media/all"
-trash_folder = "/mnt/p300_3tb/twitter_media/all/trash2"
-retrash = f"{MEDIA_FOLDER}/trash3_retrash"
+trash_folder = "/mnt/p300_3tb/twitter_media/all/trash5"
+retrash = f"{MEDIA_FOLDER}/trash5_retrash"
 
 bad_images = []
 
-process_trash = True
+process_trash = False
+move_trash= True
 
 if not process_trash:
     for file in pathlib.Path(f"{MEDIA_FOLDER}/twitter_media").glob("*"):
@@ -22,6 +23,7 @@ if not process_trash:
             continue
         file_stat = file.stat()
         if file_stat.st_size < 200:
+            print(file.name)
             bad_images.append(file.name)
 else:
     pathlib.Path(retrash).mkdir(exist_ok=True,parents=True)
@@ -105,7 +107,7 @@ for image, files in base_image_name__bad_images.items():
                     os.rename(f"{trash_folder}/twitter_media/{each}", f"{retrash}/{each}")
         else:
             print("invalid second try", r.status_code, download_url)
-            if process_trash:
+            if move_trash:
                 if pathlib.Path(f"{trash_folder}/twitter_media/{image}").exists():
                     os.rename(f"{trash_folder}/twitter_media/{image}", f"{retrash}/{image}")
                 else:
