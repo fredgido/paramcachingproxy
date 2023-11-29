@@ -42,6 +42,11 @@ function onMessage(request, sender, sendResponse) {
             || request.detail.url.startsWith("https://api.twitter.com/fleets/v1/avatar_content")
             || request.detail.url.startsWith("https://api.twitter.com/1.1/hashflags.json")
             || request.detail.url.startsWith("https://api.twitter.com/1.1/dm/inbox_initial_state.json")
+            || request.detail.url.startsWith("https://pro.twitter.com/i/api/1.1/live_pipeline/update_subscriptions") // sends to twitter the tweets you are looking at to update favs and etc real time
+            || request.detail.url.startsWith("https://pro.twitter.com/i/api/1.1/jot/client_event.json")
+            || request.detail.url.startsWith("https://pro.twitter.com/i/api/fleets/v1/avatar_content")
+            || request.detail.url.startsWith("https://pro.twitter.com/i/api/1.1/hashflags.json")
+            || request.detail.url.startsWith("https://pro.twitter.com/i/api/1.1/dm/inbox_initial_state.json")
         ) {
             console.log("skipping " + request.detail.url)
             return;
