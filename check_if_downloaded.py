@@ -75,7 +75,7 @@ async def get_httpx_client() -> httpx.AsyncClient:
             if not httpx_client:
                 httpx_client = (
                     httpx.AsyncClient(
-                        timeout=61,
+                        timeout=121,
                         http2=True,
                         limits=httpx.Limits(
                             max_connections=200,
@@ -83,7 +83,7 @@ async def get_httpx_client() -> httpx.AsyncClient:
                         ),
                     ),
                     httpx.AsyncClient(
-                        timeout=61,
+                        timeout=121,
                         http2=True,
                         limits=httpx.Limits(
                             max_connections=200,
@@ -91,7 +91,7 @@ async def get_httpx_client() -> httpx.AsyncClient:
                         ),
                     ),
                     httpx.AsyncClient(
-                        timeout=61,
+                        timeout=121,
                         http2=True,
                         limits=httpx.Limits(
                             max_connections=200,
@@ -362,7 +362,11 @@ async def main():
                             async with httpx_client_storage_lock:
                                 httpx_client_storage.clear()
                             await asyncio.sleep(2)
-                            await download_file_write_file(download_download_url, download_file_path)
+                            try:
+                                await download_file_write_file(download_download_url, download_file_path)
+                            except BaseException as e2:
+                                print(f"failed to download {download_file_path} {e2}")
+                                return
                         await downloaded.write(f"{download_file_path},{line_nr}\n")
                         await downloaded.fsync()
                         print("complete in ", time.perf_counter() - start_time)
