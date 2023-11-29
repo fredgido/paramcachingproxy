@@ -203,6 +203,7 @@ class App:
                 print(connection.log_info)
                 return
 
+        success = False
         for ext in extensions:
             file_path = twitter_media_path / f"{name}.{ext}"
             if subdomain == "video":
@@ -211,7 +212,24 @@ class App:
                 download_url = f"https://{subdomain}.twimg.com/{url_type}/{name}?format={ext}&name=orig"
             connection.log_info["download_url"] = download_url
             if await self.download_file_write_file_send_file(connection, download_url, file_path):
+                success = True
                 break
+        if not success:
+            await connection.send(
+                {
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [
+                        [b"content-type", b"text/plain"],
+                    ],
+                }
+            )
+            await connection.send(
+                {
+                    "type": "http.response.body",
+                    "body": b"",
+                }
+            )
         connection.log_info["file_exists"] = False
         connection.log_info["end_time"] = time.perf_counter() - connection.log_info["start_time"]
         # print(connection.log_info)
@@ -322,7 +340,7 @@ class App:
 
     async def download_file_write_file_send_file(
         self, connection: Connection, download_url: str, file_path: str | pathlib.Path
-    )-> bool:
+    ) -> bool:
         file_path_placeholder = str(file_path) + str(uuid.uuid4())
         connection.log_info["download_start_time"] = time.perf_counter() - connection.log_info["start_time"]
         async with client.stream("GET", download_url) as response:  # todo save headers
@@ -393,6 +411,7 @@ class App:
         # await aiofiles.os.rename(file_path_placeholder, file_path)
         connection.log_info["rename_time"] = time.perf_counter() - connection.log_info["start_time"]
         return True
+
 
 if __name__ == "__main__":
     uvicorn.run(
